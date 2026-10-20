@@ -6,7 +6,7 @@
 
 流水线不保存市场 PAT 或客户端密码。发布任务通过 GitHub OIDC 证明身份，按需获取短期令牌，两个市场仍然使用同一个已验证的 VSIX。
 
-在 GitHub 创建 `publish` 环境，将允许部署的来源限制为 `v*` tag。仅发布任务授予 `id-token: write`；普通分支和 PR 构建不申请发布身份。
+在 GitHub 创建 `publish` 环境，将允许部署的来源限制为 `v*` tag。仅发布任务授予 `id-token: write`；打包任务不申请发布身份。
 
 ## Visual Studio Marketplace 配置
 
@@ -69,7 +69,7 @@ Open VSX 的 Trusted Publisher 要求扩展至少已有一个有效版本。首�
 
 当前双市场初始化版本为 `0.0.2`，发布对应 `v0.0.2`。Open VSX 中保留较早初始化的 `0.0.1`；该版本因图标尺寸超限未发布到微软市场。GitHub Actions 会检查 tag 与清单版本、回归验证、构建并打包，再将同一 VSIX 分别上传到两个市场。版本或身份不匹配时停止发布。
 
-`main`、PR 和手动选择分支运行工作流只验证和保存 VSIX，不发布市场。产物可在 Actions 对应运行的 Artifacts 中下载，保留 30 天。
+工作流只在推送 `v*` tag 时触发，普通提交、PR 和手动操作不会另起构建。每次版本发布只产生一条运行记录，其中包含打包和两个市场发布任务。产物可在 Actions 对应运行的 Artifacts 中下载，保留 30 天。
 
 ## 发布失败后重试
 
