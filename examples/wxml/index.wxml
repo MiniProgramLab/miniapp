@@ -1,0 +1,28 @@
+<!-- 在标签或属性上悬浮；输入 <、wx: 或 mode=" 体验补全。 -->
+<view class="page">
+  <text wx:if="{{visible}}" space="nbsp">MiniProgramLab MiniApp</text>
+  <image src="/images/example.png" mode="aspectFit" />
+  <button type="primary" bindtap="onTap">开始体验</button>
+  <view wx:for="{{items}}" wx:key="id">
+    <text>{{item.title}}</text>
+  </view>
+</view>
+
+<!-- 在三元表达式中输入 img- 体验样式补全，在 img-rotate 上使用 F12 定位嵌套类名。 -->
+<image class="img {{
+  visible
+    ? 'img-rotate'
+    : ''
+}}" />
+
+<!-- 在 caption、Status、Ready、onOpen、save 和循环项 label 上使用 F12。 -->
+<view>{{caption}} · {{Status.Ready}} · {{model.name}}</view>
+<button bindtap="onOpen">打开</button>
+<button catch:tap="onLocalTap">本地方法</button>
+<view data-method="{{model.save}}" />
+<view wx:for="{{rows}}" wx:for-item="row" wx:key="label">{{row.label}}</view>
+
+<!-- 在独立模板中使用 F12 先到 data 字段，再次 F12 沿 TS 数据依赖链定位声明。 -->
+<import src="./templates/wrapper.wxml" />
+<template is="miniapp-wrapper" data="{{heading:caption, Status, model, action:openAction, records:rows, chainHeading:details.heading}}" />
+<include src="./templates/header.wxml" />

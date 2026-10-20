@@ -1,0 +1,854 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "miniapp 插件分层架构",
+    "subtitle": "miniprogramlab.miniapp · 箭头表示源码依赖方向 · 实线：运行时 · 虚线：仅类型",
+    "viewBox": [
+      1504,
+      1596
+    ]
+  },
+  "components": [
+    {
+      "id": "module0",
+      "type": "cloud",
+      "label": "组合入口",
+      "pos": [
+        178,
+        116
+      ],
+      "size": [
+        1148,
+        100
+      ],
+      "sublabel": "14 项编辑能力",
+      "tag": "src/extension.ts · 注入依赖 · 注册插件 · 暴露 API"
+    },
+    {
+      "id": "module1",
+      "type": "frontend",
+      "label": "adapters/typescript",
+      "pos": [
+        178,
+        326
+      ],
+      "size": [
+        556,
+        100
+      ],
+      "sublabel": "0 个公开导出",
+      "tag": "src/adapters/typescript"
+    },
+    {
+      "id": "module2",
+      "type": "frontend",
+      "label": "VS Code / Cursor 适配器",
+      "pos": [
+        770,
+        326
+      ],
+      "size": [
+        556,
+        100
+      ],
+      "sublabel": "10 个公开导出",
+      "tag": "src/adapters/vscode"
+    },
+    {
+      "id": "module3",
+      "type": "cloud",
+      "label": "公共 API 与能力契约",
+      "pos": [
+        178,
+        536
+      ],
+      "size": [
+        556,
+        100
+      ],
+      "sublabel": "72 个公开导出",
+      "tag": "src/api"
+    },
+    {
+      "id": "module4",
+      "type": "cloud",
+      "label": "插件底座",
+      "pos": [
+        770,
+        536
+      ],
+      "size": [
+        556,
+        100
+      ],
+      "sublabel": "5 个公开导出",
+      "tag": "src/core"
+    },
+    {
+      "id": "module5",
+      "type": "backend",
+      "label": "CSS / WXSS / SCSS / Less",
+      "pos": [
+        178,
+        746
+      ],
+      "size": [
+        358.6666666666667,
+        100
+      ],
+      "sublabel": "定义跳转",
+      "tag": "src/languages/css"
+    },
+    {
+      "id": "module6",
+      "type": "backend",
+      "label": "TypeScript / JavaScript",
+      "pos": [
+        572.6666666666667,
+        746
+      ],
+      "size": [
+        358.6666666666667,
+        100
+      ],
+      "sublabel": "8 项编辑能力",
+      "tag": "src/languages/typescript"
+    },
+    {
+      "id": "module7",
+      "type": "backend",
+      "label": "WXML",
+      "pos": [
+        967.3333333333334,
+        746
+      ],
+      "size": [
+        358.6666666666667,
+        100
+      ],
+      "sublabel": "14 项编辑能力",
+      "tag": "src/languages/wxml"
+    },
+    {
+      "id": "module8",
+      "type": "backend",
+      "label": "智能文件解析",
+      "pos": [
+        178,
+        956
+      ],
+      "size": [
+        1148,
+        100
+      ],
+      "sublabel": "14 项编辑能力",
+      "tag": "src/resolution"
+    },
+    {
+      "id": "module9",
+      "type": "external",
+      "label": "node:async_hooks",
+      "pos": [
+        178,
+        1166
+      ],
+      "size": [
+        358.6666666666667,
+        100
+      ],
+      "sublabel": "外部运行时 / 类型依赖",
+      "tag": "node:async_hooks"
+    },
+    {
+      "id": "module10",
+      "type": "external",
+      "label": "node:path",
+      "pos": [
+        572.6666666666667,
+        1166
+      ],
+      "size": [
+        358.6666666666667,
+        100
+      ],
+      "sublabel": "外部运行时 / 类型依赖",
+      "tag": "node:path"
+    },
+    {
+      "id": "module11",
+      "type": "external",
+      "label": "typescript",
+      "pos": [
+        967.3333333333334,
+        1166
+      ],
+      "size": [
+        358.6666666666667,
+        100
+      ],
+      "sublabel": "外部运行时 / 类型依赖",
+      "tag": "typescript"
+    },
+    {
+      "id": "module12",
+      "type": "external",
+      "label": "vscode",
+      "pos": [
+        572.6666666666666,
+        1376
+      ],
+      "size": [
+        358.6666666666667,
+        100
+      ],
+      "sublabel": "外部运行时 / 类型依赖",
+      "tag": "vscode"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "扩展装配层",
+      "wraps": [
+        "module0"
+      ],
+      "pad": 30
+    },
+    {
+      "kind": "region",
+      "label": "编辑器适配层",
+      "wraps": [
+        "module1",
+        "module2"
+      ],
+      "pad": 30
+    },
+    {
+      "kind": "region",
+      "label": "公共契约与插件底座",
+      "wraps": [
+        "module3",
+        "module4"
+      ],
+      "pad": 30
+    },
+    {
+      "kind": "region",
+      "label": "语言能力层",
+      "wraps": [
+        "module5",
+        "module6",
+        "module7"
+      ],
+      "pad": 30
+    },
+    {
+      "kind": "region",
+      "label": "共享解析与工程服务",
+      "wraps": [
+        "module8"
+      ],
+      "pad": 30
+    },
+    {
+      "kind": "region",
+      "label": "编辑器宿主与基础依赖",
+      "wraps": [
+        "module9",
+        "module10",
+        "module11",
+        "module12"
+      ],
+      "pad": 30
+    }
+  ],
+  "connections": [
+    {
+      "from": "module1",
+      "to": "module11",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          456,
+          461
+        ],
+        [
+          1474,
+          461
+        ],
+        [
+          1474,
+          1131
+        ],
+        [
+          1146.6666666666667,
+          1131
+        ]
+      ]
+    },
+    {
+      "from": "module2",
+      "to": "module3",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1048,
+          481
+        ],
+        [
+          456,
+          481
+        ]
+      ]
+    },
+    {
+      "from": "module2",
+      "to": "module4",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1048,
+          481
+        ],
+        [
+          1048,
+          481
+        ]
+      ]
+    },
+    {
+      "from": "module2",
+      "to": "module9",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1048,
+          476
+        ],
+        [
+          1462,
+          476
+        ],
+        [
+          1462,
+          1116
+        ],
+        [
+          357.33333333333337,
+          1116
+        ]
+      ]
+    },
+    {
+      "from": "module2",
+      "to": "module12",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1048,
+          481
+        ],
+        [
+          1458,
+          481
+        ],
+        [
+          1458,
+          1321
+        ],
+        [
+          752,
+          1321
+        ]
+      ]
+    },
+    {
+      "from": "module2",
+      "to": "module8",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1048,
+          486
+        ],
+        [
+          1454,
+          486
+        ],
+        [
+          1454,
+          896
+        ],
+        [
+          752,
+          896
+        ]
+      ]
+    },
+    {
+      "from": "module4",
+      "to": "module3",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "from": "module0",
+      "to": "module2",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          752,
+          271
+        ],
+        [
+          1048,
+          271
+        ]
+      ]
+    },
+    {
+      "from": "module0",
+      "to": "module3",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          752,
+          251
+        ],
+        [
+          1442,
+          251
+        ],
+        [
+          1442,
+          501
+        ],
+        [
+          456,
+          501
+        ]
+      ]
+    },
+    {
+      "from": "module0",
+      "to": "module4",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          752,
+          256
+        ],
+        [
+          66,
+          256
+        ],
+        [
+          66,
+          496
+        ],
+        [
+          1048,
+          496
+        ]
+      ]
+    },
+    {
+      "from": "module0",
+      "to": "module5",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          752,
+          261
+        ],
+        [
+          70,
+          261
+        ],
+        [
+          70,
+          701
+        ],
+        [
+          357.33333333333337,
+          701
+        ]
+      ]
+    },
+    {
+      "from": "module0",
+      "to": "module6",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          752,
+          266
+        ],
+        [
+          74,
+          266
+        ],
+        [
+          74,
+          696
+        ],
+        [
+          752.0000000000001,
+          696
+        ]
+      ]
+    },
+    {
+      "from": "module0",
+      "to": "module7",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          752,
+          271
+        ],
+        [
+          78,
+          271
+        ],
+        [
+          78,
+          691
+        ],
+        [
+          1146.6666666666667,
+          691
+        ]
+      ]
+    },
+    {
+      "from": "module0",
+      "to": "module12",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          752,
+          276
+        ],
+        [
+          1422,
+          276
+        ],
+        [
+          1422,
+          1316
+        ],
+        [
+          752,
+          1316
+        ]
+      ]
+    },
+    {
+      "from": "module0",
+      "to": "module8",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          752,
+          281
+        ],
+        [
+          86,
+          281
+        ],
+        [
+          86,
+          891
+        ],
+        [
+          752,
+          891
+        ]
+      ]
+    },
+    {
+      "from": "module5",
+      "to": "module3",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          357.33333333333337,
+          916
+        ],
+        [
+          1414,
+          916
+        ],
+        [
+          1414,
+          706
+        ],
+        [
+          456,
+          706
+        ]
+      ]
+    },
+    {
+      "from": "module6",
+      "to": "module3",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          752.0000000000001,
+          881
+        ],
+        [
+          1410,
+          881
+        ],
+        [
+          1410,
+          671
+        ],
+        [
+          456,
+          671
+        ]
+      ]
+    },
+    {
+      "from": "module6",
+      "to": "module11",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          752.0000000000001,
+          886
+        ],
+        [
+          1406,
+          886
+        ],
+        [
+          1406,
+          1126
+        ],
+        [
+          1146.6666666666667,
+          1126
+        ]
+      ]
+    },
+    {
+      "from": "module7",
+      "to": "module3",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          1146.6666666666667,
+          891
+        ],
+        [
+          1402,
+          891
+        ],
+        [
+          1402,
+          681
+        ],
+        [
+          456,
+          681
+        ]
+      ]
+    },
+    {
+      "from": "module8",
+      "to": "module3",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          752,
+          1106
+        ],
+        [
+          1398,
+          1106
+        ],
+        [
+          1398,
+          686
+        ],
+        [
+          456,
+          686
+        ]
+      ]
+    },
+    {
+      "from": "module8",
+      "to": "module10",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          752,
+          1111
+        ],
+        [
+          752.0000000000001,
+          1111
+        ]
+      ]
+    },
+    {
+      "from": "module8",
+      "to": "module11",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          752,
+          1111
+        ],
+        [
+          1146.6666666666667,
+          1111
+        ]
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "adapters/typescript · 1 个源文件",
+      "items": [
+        "目录：src/adapters/typescript",
+        "公开导出：无入口导出"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "VS Code / Cursor 适配器 · 8 个源文件",
+      "items": [
+        "目录：src/adapters/vscode",
+        "公开导出：WorkspaceCheckFilters、applyRefactorEdit、createLanguageHost、createWorkspaceReader、formatCheckReport、formatNavigationReport、registerFileOperations、registerNavigationExplanation、registerWorkspaceCheck、toWorkspaceEdit",
+        "依赖契约：CheckFile、CheckFinding、CheckProvider、CheckReport、CheckResult、CodeAction、Completion、Definition、Diagnostic、Disposable、LanguageFeatures、LanguageHost、LanguageRequest、LanguageResult、Logger、NavigationReport、NavigationStep、NavigationTracking、OutlineSymbol、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "公共 API 与能力契约 · 8 个源文件",
+      "items": [
+        "目录：src/api",
+        "公开导出：CallSignature、Cancellation、CheckFile、CheckFinding、CheckIssue、CheckOptions、CheckProvider、CheckReport、CheckResult、CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentLocation、ComponentMember、ComponentProperty、ComponentResolver、ComponentScriptInfo、ComponentScriptResolver、ComponentUsages、DatasetAccess、Definition、Diagnostic、Disposable、DocumentSnapshot、EventForwarding、ExpressionInfo、FileReference、FileReferenceKind、FoldingRegion、HandlerSignature、Hover、InstanceAccess、LanguageFeatures、LanguageHost、LanguagePlugin、LanguageRequest、LanguageResult、LinkedEditing、Logger、MiniAppApi、NavigationReport、NavigationStep、NavigationTracking、OutlineSymbol、PageQuery、PluginContext、PluginInfo、ProjectFileResolver、Reference、RenameTarget、ResourceScope、RouteAccess、RouteContextResolver、RouteManifest、RouteResolver、RouteResult、ScriptAdapter、ScriptDefinitionResolver、ScriptModule、SemanticType、StaticString、StyleClassResolver、TemplateBinding、TemplateContext、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
+        "依赖契约：CallSignature、Cancellation、CodeAction、Completion、DatasetAccess、Definition、Diagnostic、ExpressionInfo、FoldingRegion、HandlerSignature、Hover、InstanceAccess、LanguageRequest、LanguageResult、OutlineSymbol、ProjectFileResolver、Reference、RenameTarget、RouteAccess、RouteManifest、ScriptDefinitionResolver、ScriptModule、SemanticType、StaticString、TextEdit、TextRange、WorkspaceDependency、WorkspaceText"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "插件底座 · 4 个源文件",
+      "items": [
+        "目录：src/core",
+        "公开导出：DisposableStore、PluginRuntime、checkWorkspace、createWorkspaceRevisions、workspaceRevisionKey",
+        "依赖契约：CheckFile、CheckFinding、CheckIssue、CheckOptions、CheckProvider、CheckResult、Diagnostic、Disposable、LanguageHost、LanguagePlugin、Logger、MiniAppApi、PluginInfo、ResourceScope、TextRange、WorkspaceReader"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "组合入口 · 1 个源文件",
+      "items": [
+        "目录：src/extension.ts",
+        "公开导出：activate",
+        "声明能力：自动闭合、codeActions、补全、定义跳转、diagnostics、documentSymbols、foldingRanges、highlights、悬浮、标签联动、references、rename、selectionRanges、signatureHelp",
+        "依赖契约：LanguageFeatures、Logger、MiniAppApi、ScriptAdapter、WorkspaceReader"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "CSS / WXSS / SCSS / Less · 6 个源文件",
+      "items": [
+        "目录：src/languages/css",
+        "公开导出：CssModule、createCssModule",
+        "声明能力：定义跳转",
+        "依赖契约：Completion、Definition、FileReference、LanguagePlugin、LanguageRequest、ProjectFileResolver、StyleClassResolver、TextRange、WorkspaceReader、WorkspaceText",
+        "语言资源：grammars: wxss",
+        "语言资源：languages: wxss"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "TypeScript / JavaScript · 26 个源文件",
+      "items": [
+        "目录：src/languages/typescript",
+        "公开导出：createComponentScriptResolver、createDataPathPlugin、createScriptNavigationPlugin、createScriptResolver、createWxsPlugin",
+        "声明能力：补全、定义跳转、diagnostics、highlights、悬浮、references、rename、signatureHelp",
+        "依赖契约：CallSignature、CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentLocation、ComponentMember、ComponentProperty、ComponentScriptInfo、ComponentScriptResolver、DatasetAccess、Definition、Diagnostic、EventForwarding、ExpressionInfo、HandlerSignature、Hover、InstanceAccess、LanguageFeatures、LanguagePlugin、LanguageRequest、PageQuery、ProjectFileResolver、RouteAccess、RouteManifest、ScriptAdapter、ScriptDefinitionResolver、ScriptModule、SemanticType、StaticString、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
+        "语言资源：grammars: wxs",
+        "语言资源：languages: wxs"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "WXML · 30 个源文件",
+      "items": [
+        "目录：src/languages/wxml",
+        "公开导出：WxmlOptions、createComponentResolver、createDatasetFeatures、createInstanceFeatures、createNavigatorPlugin、createRenameFeatures、createRouteContextResolver、createTemplateResolver、createWxmlPlugin、navigatorAccesses、templateFileReferences、wxmlPlugin",
+        "声明能力：自动闭合、codeActions、补全、定义跳转、diagnostics、documentSymbols、foldingRanges、highlights、悬浮、标签联动、references、rename、selectionRanges、signatureHelp",
+        "依赖契约：CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentLocation、ComponentMember、ComponentProperty、ComponentResolver、ComponentScriptInfo、ComponentScriptResolver、ComponentUsages、DatasetAccess、Definition、Diagnostic、FileReference、FoldingRegion、Hover、InstanceAccess、LanguageFeatures、LanguagePlugin、LanguageRequest、LinkedEditing、OutlineSymbol、ProjectFileResolver、RenameTarget、RouteAccess、RouteContextResolver、RouteResolver、ScriptDefinitionResolver、ScriptModule、SemanticType、StyleClassResolver、TemplateBinding、TemplateContext、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
+        "语言资源：grammars: wxml",
+        "语言资源：languages: wxml",
+        "语言资源：snippets: wxml"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "智能文件解析 · 11 个源文件",
+      "items": [
+        "目录：src/resolution",
+        "公开导出：FileMove、FileReferences、RelatedFile、createFileNavigationPlugin、createFileOperations、createProjectFileResolver、createRoutePlugin、createRouteResolver、routeFileEdits",
+        "声明能力：自动闭合、codeActions、补全、定义跳转、diagnostics、documentSymbols、foldingRanges、highlights、悬浮、标签联动、references、rename、selectionRanges、signatureHelp",
+        "依赖契约：Cancellation、Completion、Definition、FileReference、FileReferenceKind、LanguageFeatures、LanguagePlugin、LanguageRequest、ProjectFileResolver、RouteAccess、RouteContextResolver、RouteManifest、RouteResolver、RouteResult、ScriptDefinitionResolver、StaticString、TextEdit、TextRange、WorkspaceReader、WorkspaceText"
+      ]
+    }
+  ]
+}

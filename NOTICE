@@ -1,0 +1,48 @@
+miniapp
+Copyright 2026 Rainer-Yu and MiniProgramLab contributors
+Rainer-Yu: https://github.com/Rainer-Yu
+
+This project is distributed under the Apache License, Version 2.0.
+
+The WXML and WXSS TextMate grammars, language configurations, and WXML snippets are
+derived from MiniProgramLab Framework:
+https://github.com/MiniProgramLab/framework
+Reference commit: e401fe717dcad30e74c2617972ef2c3ee9502a82
+Copyright 2026 Rainer-Yu and MiniProgramLab contributors
+The snippets were adapted to remove framework-specific components.
+
+The extension icon at media/icon.png is copied without modification from
+vscode/assets/icon.png in MiniProgramLab Framework at the reference commit above.
+Git blob SHA: a569b7d22b2ae11b400c1ff064503e6adbb54f51
+
+The plugin contracts, lifecycle runtime, VS Code adapter, and basic WXML
+language service in this project are a separate implementation.
+
+The style indexing and navigation design was informed by vscode/src/styles.ts
+in the reference project. The CSS module is implemented with explicit workspace,
+definition, and template-class resolver interfaces and includes CSS custom
+property navigation.
+
+The WXML script navigation design was informed by vscode/src/scripts.ts,
+vscode/src/wxml.ts and vscode/src/language.ts in the reference project.
+The script resolver is a separate implementation using the TypeScript compiler
+API, an in-memory workspace host, and the ScriptDefinitionResolver interface.
+
+This distribution includes the TypeScript compiler and selected standard
+library declarations. TypeScript is Copyright (c) Microsoft Corporation
+and is distributed under the Apache License, Version 2.0.
+The original license and third-party notices are included at:
+dist/licenses/typescript-LICENSE.txt
+dist/licenses/typescript-ThirdPartyNoticeText.txt
+https://github.com/microsoft/TypeScript
+
+内置 TypeScript 编译器通过保留公开运行时名称的 JavaScript 压缩生成，
+完整导出与许可声明随发行包保留；标准库声明文件保持原样。
+
+The architecture documentation generator vendors the unmodified architecture
+renderer, shared helpers, template, schemas, and output checker from Archify 2.7.
+Source: https://github.com/tt-a1i/archify
+Copyright (c) 2026 tt-a1i (Archify)
+Copyright (c) 2025 Cocoon AI (original "architecture-diagram-generator")
+These files retain their MIT license at scripts/vendor/archify/LICENSE.
+

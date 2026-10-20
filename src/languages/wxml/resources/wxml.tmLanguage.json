@@ -1,0 +1,229 @@
+{
+  "name": "WXML",
+  "scopeName": "text.html.wxml",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#expression"
+    },
+    {
+      "include": "#tag"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.block.wxml",
+      "begin": "<!--",
+      "end": "-->"
+    },
+    "expression": {
+      "name": "meta.embedded.expression.wxml",
+      "contentName": "source.ts.embedded.wxml",
+      "begin": "\\{\\{",
+      "end": "\\}\\}",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.section.embedded.begin.wxml"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.embedded.end.wxml"
+        }
+      },
+      "patterns": [
+        {
+          "include": "source.ts"
+        }
+      ],
+      "comment": "复用 TypeScript 的表达式高亮，函数调用沿用当前主题的 TS 函数作用域。"
+    },
+    "tag": {
+      "name": "meta.tag.wxml",
+      "begin": "(</?)([A-Za-z][\\w:-]*)",
+      "end": "/?>",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.begin.wxml"
+        },
+        "2": {
+          "name": "entity.name.tag.wxml"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.tag.end.wxml"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#event-attribute"
+        },
+        {
+          "include": "#expression"
+        },
+        {
+          "name": "entity.other.attribute-name.wxml",
+          "match": "[\\w:@-]+(?=\\s*=|\\s|/?>)"
+        },
+        {
+          "comment": "属性等号沿用 HTML 键值分隔符样式，区别于插值中的脚本运算符。",
+          "name": "punctuation.separator.key-value.html",
+          "match": "="
+        },
+        {
+          "name": "meta.attribute.value.wxml",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "include": "#expression"
+            },
+            {
+              "name": "string.quoted.double.wxml",
+              "match": "[^\"{]+|\\{(?!\\{)"
+            }
+          ],
+          "comment": "字符串仅作用于字面文本，避免父级字符串样式覆盖嵌入函数的主题样式。",
+          "beginCaptures": {
+            "0": {
+              "name": "string.quoted.double.wxml punctuation.definition.string.begin.wxml"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "string.quoted.double.wxml punctuation.definition.string.end.wxml"
+            }
+          }
+        },
+        {
+          "name": "meta.attribute.value.wxml",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "include": "#expression"
+            },
+            {
+              "name": "string.quoted.single.wxml",
+              "match": "[^'{]+|\\{(?!\\{)"
+            }
+          ],
+          "comment": "字符串仅作用于字面文本，避免父级字符串样式覆盖嵌入函数的主题样式。",
+          "beginCaptures": {
+            "0": {
+              "name": "string.quoted.single.wxml punctuation.definition.string.begin.wxml"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "string.quoted.single.wxml punctuation.definition.string.end.wxml"
+            }
+          }
+        }
+      ]
+    },
+    "event-attribute": {
+      "comment": "事件处理方法使用 TS 函数作用域，属性名、引号及普通属性仍沿用 WXML 样式。",
+      "patterns": [
+        {
+          "name": "meta.attribute.event.wxml",
+          "begin": "(?<![\\w:@.-])((?:(?:capture-|mut-)?(?:bind|catch):?[\\w-]+|worklet:[\\w-]+))\\s*(=)\\s*(\")",
+          "end": "\"",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.other.attribute-name.wxml"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.html"
+            },
+            "3": {
+              "name": "string.quoted.double.wxml punctuation.definition.string.begin.wxml"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "string.quoted.double.wxml punctuation.definition.string.end.wxml"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#expression"
+            },
+            {
+              "include": "#event-handler"
+            },
+            {
+              "name": "string.quoted.double.wxml",
+              "match": "[^\"{]+|\\{(?!\\{)"
+            }
+          ]
+        },
+        {
+          "name": "meta.attribute.event.wxml",
+          "begin": "(?<![\\w:@.-])((?:(?:capture-|mut-)?(?:bind|catch):?[\\w-]+|worklet:[\\w-]+))\\s*(=)\\s*(')",
+          "end": "'",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.other.attribute-name.wxml"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.html"
+            },
+            "3": {
+              "name": "string.quoted.single.wxml punctuation.definition.string.begin.wxml"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "string.quoted.single.wxml punctuation.definition.string.end.wxml"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#expression"
+            },
+            {
+              "include": "#event-handler"
+            },
+            {
+              "name": "string.quoted.single.wxml",
+              "match": "[^'{]+|\\{(?!\\{)"
+            }
+          ]
+        },
+        {
+          "match": "(?<![\\w:@.-])((?:(?:capture-|mut-)?(?:bind|catch):?[\\w-]+|worklet:[\\w-]+))\\s*(=)\\s*((?:[_$[:alpha:]][_$[:alnum:]]*\\.)*)([_$[:alpha:]][_$[:alnum:]]*)(?=\\s|/?>|$)",
+          "captures": {
+            "1": {
+              "name": "entity.other.attribute-name.wxml"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.html"
+            },
+            "3": {
+              "name": "variable.other.object.ts"
+            },
+            "4": {
+              "name": "entity.name.function.ts"
+            }
+          }
+        }
+      ]
+    },
+    "event-handler": {
+      "comment": "只高亮静态方法路径的末端名称；插值由独立表达式规则处理。",
+      "match": "(?:\\G|^)\\s*((?:[_$[:alpha:]][_$[:alnum:]]*\\.)*)([_$[:alpha:]][_$[:alnum:]]*)\\s*(?=[\"']|$)",
+      "captures": {
+        "1": {
+          "name": "variable.other.object.ts"
+        },
+        "2": {
+          "name": "entity.name.function.ts"
+        }
+      }
+    }
+  }
+}

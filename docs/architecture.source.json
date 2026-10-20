@@ -1,0 +1,672 @@
+{
+  "extension": "miniprogramlab.miniapp",
+  "modules": [
+    {
+      "name": "adapters/typescript",
+      "files": [
+        "src/adapters/typescript/style-imports.ts"
+      ],
+      "exports": [],
+      "ports": [],
+      "features": [],
+      "resources": []
+    },
+    {
+      "name": "adapters/vscode",
+      "files": [
+        "src/adapters/vscode/auto-insertion.ts",
+        "src/adapters/vscode/dependency-tracking.ts",
+        "src/adapters/vscode/file-operations.ts",
+        "src/adapters/vscode/language-host.ts",
+        "src/adapters/vscode/navigation-report.ts",
+        "src/adapters/vscode/navigation-tracking.ts",
+        "src/adapters/vscode/workspace-check.ts",
+        "src/adapters/vscode/workspace-reader.ts"
+      ],
+      "exports": [
+        "WorkspaceCheckFilters",
+        "applyRefactorEdit",
+        "createLanguageHost",
+        "createWorkspaceReader",
+        "formatCheckReport",
+        "formatNavigationReport",
+        "registerFileOperations",
+        "registerNavigationExplanation",
+        "registerWorkspaceCheck",
+        "toWorkspaceEdit"
+      ],
+      "ports": [
+        "CheckFile",
+        "CheckFinding",
+        "CheckProvider",
+        "CheckReport",
+        "CheckResult",
+        "CodeAction",
+        "Completion",
+        "Definition",
+        "Diagnostic",
+        "Disposable",
+        "LanguageFeatures",
+        "LanguageHost",
+        "LanguageRequest",
+        "LanguageResult",
+        "Logger",
+        "NavigationReport",
+        "NavigationStep",
+        "NavigationTracking",
+        "OutlineSymbol",
+        "TextEdit",
+        "TextRange",
+        "WorkspaceDependency",
+        "WorkspaceReader",
+        "WorkspaceText"
+      ],
+      "features": [],
+      "resources": []
+    },
+    {
+      "name": "api",
+      "files": [
+        "src/api/checks.ts",
+        "src/api/components.ts",
+        "src/api/files.ts",
+        "src/api/index.ts",
+        "src/api/navigation.ts",
+        "src/api/routes.ts",
+        "src/api/semantic.ts",
+        "src/api/structure.ts"
+      ],
+      "exports": [
+        "CallSignature",
+        "Cancellation",
+        "CheckFile",
+        "CheckFinding",
+        "CheckIssue",
+        "CheckOptions",
+        "CheckProvider",
+        "CheckReport",
+        "CheckResult",
+        "CodeAction",
+        "Completion",
+        "ComponentEvent",
+        "ComponentExtractionScope",
+        "ComponentLocation",
+        "ComponentMember",
+        "ComponentProperty",
+        "ComponentResolver",
+        "ComponentScriptInfo",
+        "ComponentScriptResolver",
+        "ComponentUsages",
+        "DatasetAccess",
+        "Definition",
+        "Diagnostic",
+        "Disposable",
+        "DocumentSnapshot",
+        "EventForwarding",
+        "ExpressionInfo",
+        "FileReference",
+        "FileReferenceKind",
+        "FoldingRegion",
+        "HandlerSignature",
+        "Hover",
+        "InstanceAccess",
+        "LanguageFeatures",
+        "LanguageHost",
+        "LanguagePlugin",
+        "LanguageRequest",
+        "LanguageResult",
+        "LinkedEditing",
+        "Logger",
+        "MiniAppApi",
+        "NavigationReport",
+        "NavigationStep",
+        "NavigationTracking",
+        "OutlineSymbol",
+        "PageQuery",
+        "PluginContext",
+        "PluginInfo",
+        "ProjectFileResolver",
+        "Reference",
+        "RenameTarget",
+        "ResourceScope",
+        "RouteAccess",
+        "RouteContextResolver",
+        "RouteManifest",
+        "RouteResolver",
+        "RouteResult",
+        "ScriptAdapter",
+        "ScriptDefinitionResolver",
+        "ScriptModule",
+        "SemanticType",
+        "StaticString",
+        "StyleClassResolver",
+        "TemplateBinding",
+        "TemplateContext",
+        "TemplateExpression",
+        "TemplateScope",
+        "TextEdit",
+        "TextRange",
+        "WorkspaceDependency",
+        "WorkspaceReader",
+        "WorkspaceText"
+      ],
+      "ports": [
+        "CallSignature",
+        "Cancellation",
+        "CodeAction",
+        "Completion",
+        "DatasetAccess",
+        "Definition",
+        "Diagnostic",
+        "ExpressionInfo",
+        "FoldingRegion",
+        "HandlerSignature",
+        "Hover",
+        "InstanceAccess",
+        "LanguageRequest",
+        "LanguageResult",
+        "OutlineSymbol",
+        "ProjectFileResolver",
+        "Reference",
+        "RenameTarget",
+        "RouteAccess",
+        "RouteManifest",
+        "ScriptDefinitionResolver",
+        "ScriptModule",
+        "SemanticType",
+        "StaticString",
+        "TextEdit",
+        "TextRange",
+        "WorkspaceDependency",
+        "WorkspaceText"
+      ],
+      "features": [],
+      "resources": []
+    },
+    {
+      "name": "core",
+      "files": [
+        "src/core/disposable-store.ts",
+        "src/core/plugin-runtime.ts",
+        "src/core/workspace-check.ts",
+        "src/core/workspace-revisions.ts"
+      ],
+      "exports": [
+        "DisposableStore",
+        "PluginRuntime",
+        "checkWorkspace",
+        "createWorkspaceRevisions",
+        "workspaceRevisionKey"
+      ],
+      "ports": [
+        "CheckFile",
+        "CheckFinding",
+        "CheckIssue",
+        "CheckOptions",
+        "CheckProvider",
+        "CheckResult",
+        "Diagnostic",
+        "Disposable",
+        "LanguageHost",
+        "LanguagePlugin",
+        "Logger",
+        "MiniAppApi",
+        "PluginInfo",
+        "ResourceScope",
+        "TextRange",
+        "WorkspaceReader"
+      ],
+      "features": [],
+      "resources": []
+    },
+    {
+      "name": "extension",
+      "files": [
+        "src/extension.ts"
+      ],
+      "exports": [
+        "activate"
+      ],
+      "ports": [
+        "LanguageFeatures",
+        "Logger",
+        "MiniAppApi",
+        "ScriptAdapter",
+        "WorkspaceReader"
+      ],
+      "features": [
+        "autoInsertion",
+        "codeActions",
+        "completion",
+        "definition",
+        "diagnostics",
+        "documentSymbols",
+        "foldingRanges",
+        "highlights",
+        "hover",
+        "linkedEditing",
+        "references",
+        "rename",
+        "selectionRanges",
+        "signatureHelp"
+      ],
+      "resources": []
+    },
+    {
+      "name": "languages/css",
+      "files": [
+        "src/languages/css/index.ts",
+        "src/languages/css/lexer.ts",
+        "src/languages/css/parser.ts",
+        "src/languages/css/project.ts",
+        "src/languages/css/types.ts",
+        "src/languages/css/uri.ts"
+      ],
+      "exports": [
+        "CssModule",
+        "createCssModule"
+      ],
+      "ports": [
+        "Completion",
+        "Definition",
+        "FileReference",
+        "LanguagePlugin",
+        "LanguageRequest",
+        "ProjectFileResolver",
+        "StyleClassResolver",
+        "TextRange",
+        "WorkspaceReader",
+        "WorkspaceText"
+      ],
+      "features": [
+        "definition"
+      ],
+      "resources": [
+        "grammars: wxss",
+        "languages: wxss"
+      ]
+    },
+    {
+      "name": "languages/typescript",
+      "files": [
+        "src/languages/typescript/analysis.ts",
+        "src/languages/typescript/completion.ts",
+        "src/languages/typescript/components.ts",
+        "src/languages/typescript/config-edits.ts",
+        "src/languages/typescript/data-path-key.ts",
+        "src/languages/typescript/data-paths.ts",
+        "src/languages/typescript/dataset.ts",
+        "src/languages/typescript/documentation.ts",
+        "src/languages/typescript/events.ts",
+        "src/languages/typescript/expression-names.ts",
+        "src/languages/typescript/import-index.ts",
+        "src/languages/typescript/index.ts",
+        "src/languages/typescript/instances.ts",
+        "src/languages/typescript/navigation.ts",
+        "src/languages/typescript/project.ts",
+        "src/languages/typescript/query.ts",
+        "src/languages/typescript/refactor.ts",
+        "src/languages/typescript/rename.ts",
+        "src/languages/typescript/routes.ts",
+        "src/languages/typescript/script-resolver.ts",
+        "src/languages/typescript/semantic-types.ts",
+        "src/languages/typescript/template-values.ts",
+        "src/languages/typescript/values.ts",
+        "src/languages/typescript/wxs-calls.ts",
+        "src/languages/typescript/wxs-checks.ts",
+        "src/languages/typescript/wxs.ts"
+      ],
+      "exports": [
+        "createComponentScriptResolver",
+        "createDataPathPlugin",
+        "createScriptNavigationPlugin",
+        "createScriptResolver",
+        "createWxsPlugin"
+      ],
+      "ports": [
+        "CallSignature",
+        "CodeAction",
+        "Completion",
+        "ComponentEvent",
+        "ComponentExtractionScope",
+        "ComponentLocation",
+        "ComponentMember",
+        "ComponentProperty",
+        "ComponentScriptInfo",
+        "ComponentScriptResolver",
+        "DatasetAccess",
+        "Definition",
+        "Diagnostic",
+        "EventForwarding",
+        "ExpressionInfo",
+        "HandlerSignature",
+        "Hover",
+        "InstanceAccess",
+        "LanguageFeatures",
+        "LanguagePlugin",
+        "LanguageRequest",
+        "PageQuery",
+        "ProjectFileResolver",
+        "RouteAccess",
+        "RouteManifest",
+        "ScriptAdapter",
+        "ScriptDefinitionResolver",
+        "ScriptModule",
+        "SemanticType",
+        "StaticString",
+        "TemplateExpression",
+        "TemplateScope",
+        "TextEdit",
+        "TextRange",
+        "WorkspaceDependency",
+        "WorkspaceReader",
+        "WorkspaceText"
+      ],
+      "features": [
+        "completion",
+        "definition",
+        "diagnostics",
+        "highlights",
+        "hover",
+        "references",
+        "rename",
+        "signatureHelp"
+      ],
+      "resources": [
+        "grammars: wxs",
+        "languages: wxs"
+      ]
+    },
+    {
+      "name": "languages/wxml",
+      "files": [
+        "src/languages/wxml/catalog.ts",
+        "src/languages/wxml/checks.ts",
+        "src/languages/wxml/class-completion.ts",
+        "src/languages/wxml/class-context.ts",
+        "src/languages/wxml/component-data.ts",
+        "src/languages/wxml/component-events.ts",
+        "src/languages/wxml/component-styles.ts",
+        "src/languages/wxml/component-templates.ts",
+        "src/languages/wxml/components.ts",
+        "src/languages/wxml/dataset.ts",
+        "src/languages/wxml/definition.ts",
+        "src/languages/wxml/events.ts",
+        "src/languages/wxml/expression.ts",
+        "src/languages/wxml/file-definition.ts",
+        "src/languages/wxml/index.ts",
+        "src/languages/wxml/instances.ts",
+        "src/languages/wxml/metadata.ts",
+        "src/languages/wxml/parser.ts",
+        "src/languages/wxml/refactor.ts",
+        "src/languages/wxml/rename.ts",
+        "src/languages/wxml/route-contexts.ts",
+        "src/languages/wxml/routes.ts",
+        "src/languages/wxml/service.ts",
+        "src/languages/wxml/structure-checks.ts",
+        "src/languages/wxml/structure.ts",
+        "src/languages/wxml/tag-editing.ts",
+        "src/languages/wxml/template-document.ts",
+        "src/languages/wxml/template-project.ts",
+        "src/languages/wxml/template-tree.ts",
+        "src/languages/wxml/wxs.ts"
+      ],
+      "exports": [
+        "WxmlOptions",
+        "createComponentResolver",
+        "createDatasetFeatures",
+        "createInstanceFeatures",
+        "createNavigatorPlugin",
+        "createRenameFeatures",
+        "createRouteContextResolver",
+        "createTemplateResolver",
+        "createWxmlPlugin",
+        "navigatorAccesses",
+        "templateFileReferences",
+        "wxmlPlugin"
+      ],
+      "ports": [
+        "CodeAction",
+        "Completion",
+        "ComponentEvent",
+        "ComponentExtractionScope",
+        "ComponentLocation",
+        "ComponentMember",
+        "ComponentProperty",
+        "ComponentResolver",
+        "ComponentScriptInfo",
+        "ComponentScriptResolver",
+        "ComponentUsages",
+        "DatasetAccess",
+        "Definition",
+        "Diagnostic",
+        "FileReference",
+        "FoldingRegion",
+        "Hover",
+        "InstanceAccess",
+        "LanguageFeatures",
+        "LanguagePlugin",
+        "LanguageRequest",
+        "LinkedEditing",
+        "OutlineSymbol",
+        "ProjectFileResolver",
+        "RenameTarget",
+        "RouteAccess",
+        "RouteContextResolver",
+        "RouteResolver",
+        "ScriptDefinitionResolver",
+        "ScriptModule",
+        "SemanticType",
+        "StyleClassResolver",
+        "TemplateBinding",
+        "TemplateContext",
+        "TemplateExpression",
+        "TemplateScope",
+        "TextEdit",
+        "TextRange",
+        "WorkspaceDependency",
+        "WorkspaceReader",
+        "WorkspaceText"
+      ],
+      "features": [
+        "autoInsertion",
+        "codeActions",
+        "completion",
+        "definition",
+        "diagnostics",
+        "documentSymbols",
+        "foldingRanges",
+        "highlights",
+        "hover",
+        "linkedEditing",
+        "references",
+        "rename",
+        "selectionRanges",
+        "signatureHelp"
+      ],
+      "resources": [
+        "grammars: wxml",
+        "languages: wxml",
+        "snippets: wxml"
+      ]
+    },
+    {
+      "name": "resolution",
+      "files": [
+        "src/resolution/config.ts",
+        "src/resolution/file-operations.ts",
+        "src/resolution/file-references.ts",
+        "src/resolution/index.ts",
+        "src/resolution/navigation-document.ts",
+        "src/resolution/navigation.ts",
+        "src/resolution/project.ts",
+        "src/resolution/registration-edits.ts",
+        "src/resolution/route-file-edits.ts",
+        "src/resolution/routes-document.ts",
+        "src/resolution/routes.ts"
+      ],
+      "exports": [
+        "FileMove",
+        "FileReferences",
+        "RelatedFile",
+        "createFileNavigationPlugin",
+        "createFileOperations",
+        "createProjectFileResolver",
+        "createRoutePlugin",
+        "createRouteResolver",
+        "routeFileEdits"
+      ],
+      "ports": [
+        "Cancellation",
+        "Completion",
+        "Definition",
+        "FileReference",
+        "FileReferenceKind",
+        "LanguageFeatures",
+        "LanguagePlugin",
+        "LanguageRequest",
+        "ProjectFileResolver",
+        "RouteAccess",
+        "RouteContextResolver",
+        "RouteManifest",
+        "RouteResolver",
+        "RouteResult",
+        "ScriptDefinitionResolver",
+        "StaticString",
+        "TextEdit",
+        "TextRange",
+        "WorkspaceReader",
+        "WorkspaceText"
+      ],
+      "features": [
+        "autoInsertion",
+        "codeActions",
+        "completion",
+        "definition",
+        "diagnostics",
+        "documentSymbols",
+        "foldingRanges",
+        "highlights",
+        "hover",
+        "linkedEditing",
+        "references",
+        "rename",
+        "selectionRanges",
+        "signatureHelp"
+      ],
+      "resources": []
+    }
+  ],
+  "dependencies": [
+    {
+      "from": "adapters/typescript",
+      "to": "npm:typescript",
+      "typeOnly": true
+    },
+    {
+      "from": "adapters/vscode",
+      "to": "api",
+      "typeOnly": true
+    },
+    {
+      "from": "adapters/vscode",
+      "to": "core",
+      "typeOnly": false
+    },
+    {
+      "from": "adapters/vscode",
+      "to": "npm:node:async_hooks",
+      "typeOnly": false
+    },
+    {
+      "from": "adapters/vscode",
+      "to": "npm:vscode",
+      "typeOnly": false
+    },
+    {
+      "from": "adapters/vscode",
+      "to": "resolution",
+      "typeOnly": true
+    },
+    {
+      "from": "core",
+      "to": "api",
+      "typeOnly": true
+    },
+    {
+      "from": "extension",
+      "to": "adapters/vscode",
+      "typeOnly": false
+    },
+    {
+      "from": "extension",
+      "to": "api",
+      "typeOnly": true
+    },
+    {
+      "from": "extension",
+      "to": "core",
+      "typeOnly": false
+    },
+    {
+      "from": "extension",
+      "to": "languages/css",
+      "typeOnly": false
+    },
+    {
+      "from": "extension",
+      "to": "languages/typescript",
+      "typeOnly": false
+    },
+    {
+      "from": "extension",
+      "to": "languages/wxml",
+      "typeOnly": false
+    },
+    {
+      "from": "extension",
+      "to": "npm:vscode",
+      "typeOnly": false
+    },
+    {
+      "from": "extension",
+      "to": "resolution",
+      "typeOnly": false
+    },
+    {
+      "from": "languages/css",
+      "to": "api",
+      "typeOnly": true
+    },
+    {
+      "from": "languages/typescript",
+      "to": "api",
+      "typeOnly": true
+    },
+    {
+      "from": "languages/typescript",
+      "to": "npm:typescript",
+      "typeOnly": false
+    },
+    {
+      "from": "languages/wxml",
+      "to": "api",
+      "typeOnly": true
+    },
+    {
+      "from": "resolution",
+      "to": "api",
+      "typeOnly": true
+    },
+    {
+      "from": "resolution",
+      "to": "npm:node:path",
+      "typeOnly": false
+    },
+    {
+      "from": "resolution",
+      "to": "npm:typescript",
+      "typeOnly": false
+    }
+  ]
+}

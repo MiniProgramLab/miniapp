@@ -1,0 +1,9 @@
+{
+  "name": "WXSS",
+  "scopeName": "source.css.wxss",
+  "patterns": [
+    {
+      "include": "source.css"
+    }
+  ]
+}

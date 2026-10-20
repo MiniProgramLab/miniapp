@@ -1,0 +1,12 @@
+node_modules/
+.pnpm-store/
+dist/
+.DS_Store
+*.vsix
+*.tsbuildinfo
+typescript-plugin/index.cjs*
+.env
+.env.*
+!.env.example
+*.pem
+*.key

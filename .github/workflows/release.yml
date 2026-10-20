@@ -1,0 +1,122 @@
+name: 构建与发布插件
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 默认只读仓库；只有发布任务可以申请短期 OIDC 凭据。
+permissions:
+  contents: read
+
+concurrency:
+  group: miniapp-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 校验并打包 VSIX
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.manifest.outputs.version }}
+    steps:
+      - name: 获取源码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - name: 安装 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: 校验扩展标识与 tag 版本
+        id: manifest
+        run: pnpm dev:release:check
+      - name: 按锁文件安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 检查架构图是否同步
+        run: pnpm dev:diagram:check
+      - name: 构建并打包
+        run: pnpm dev:package
+      # 编译器与适配器回归依赖构建产物，首次检出必须先构建。
+      - name: 运行回归验证
+        run: pnpm dev:test
+      - name: 保存唯一发布产物
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: miniapp-${{ steps.manifest.outputs.version }}
+          path: dist/miniapp-${{ steps.manifest.outputs.version }}.vsix
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: 发布到 ${{ matrix.marketplace }}
+    needs: build
+    # main、PR 和手动分支构建只生成产物；仅版本 tag 执行市场发布。
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: publish
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VSIX_PATH: dist/miniapp-${{ needs.build.outputs.version }}.vsix
+    strategy:
+      # 一个市场暂时失败时，另一个市场仍可完成发布并单独重试。
+      fail-fast: false
+      matrix:
+        include:
+          - marketplace: Visual Studio Marketplace
+            target: vscode
+          - marketplace: Open VSX
+            target: openvsx
+    steps:
+      - name: 获取锁定的发布工具配置
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - name: 安装 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: 按锁文件安装发布工具
+        run: pnpm install --frozen-lockfile
+      - name: 确认微软联合身份已配置
+        if: matrix.target == 'vscode'
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+        run: |
+          if [ -z "$AZURE_CLIENT_ID" ] || [ -z "$AZURE_TENANT_ID" ]; then
+            echo "::error::请配置 AZURE_CLIENT_ID、AZURE_TENANT_ID 变量和 publish 环境的联合身份。"
+            exit 1
+          fi
+      - name: 下载同一个已验证的 VSIX
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: miniapp-${{ needs.build.outputs.version }}
+          path: dist
+      - name: 使用 GitHub OIDC 登录微软
+        if: matrix.target == 'vscode'
+        uses: Azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+      # 两个命令都上传同一个产物，重跑时跳过已成功发布的版本。
+      - name: 用微软短期令牌发布
+        if: matrix.target == 'vscode'
+        run: pnpm exec vsce publish --packagePath "$VSIX_PATH" --azure-credential --skip-duplicate
+      - name: 用 Open VSX 可信发布交换短期令牌
+        if: matrix.target == 'openvsx'
+        run: pnpm exec ovsx publish "$VSIX_PATH" --trusted-publishing --skip-duplicate

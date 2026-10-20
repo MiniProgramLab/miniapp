@@ -1,0 +1,7 @@
+<view>
+  <!-- 自定义卡片的头部内容。 -->
+  <slot name="header" />
+  <view>{{titleText}}</view>
+  <!-- 自定义卡片的操作区域。 -->
+  <view><slot name="actions" /></view>
+</view>

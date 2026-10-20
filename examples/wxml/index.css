@@ -1,0 +1,6 @@
+@import './styles/theme.css';
+
+/* 在 --brand 上按 F12，可越过中转文件到 palette.css。 */
+.css-example {
+  color: var(--brand);
+}

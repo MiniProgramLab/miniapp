@@ -1,0 +1,15 @@
+@use './styles' as theme;
+
+/* 在 theme.$brand、theme.center、theme.spacing 上按 F12。 */
+.page {
+  color: theme.$brand;
+  padding: theme.spacing();
+  @include theme.center;
+}
+
+/* 通过三元表达式中的 img-rotate 定位此嵌套声明。 */
+.img {
+  &-rotate {
+    transform: rotate(90deg);
+  }
+}

@@ -1,0 +1,5 @@
+<!-- 标签、参数和插槽支持悬浮与 F12，参数表达式仍使用页面脚本语义。 -->
+<demo-card title-text="示例标题" has-power="true">
+  <view slot="header">头部内容</view>
+  <view slot="actions">操作内容</view>
+</demo-card>

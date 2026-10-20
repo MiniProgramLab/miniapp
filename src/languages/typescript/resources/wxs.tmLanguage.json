@@ -1,0 +1,5 @@
+{
+  "name": "WXS",
+  "scopeName": "source.wxs",
+  "patterns": [{ "include": "source.js" }]
+}

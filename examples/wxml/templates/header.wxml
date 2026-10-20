@@ -1,0 +1,3 @@
+<!-- include 保留调用页面的上下文，无需为片段创建 header.ts。 -->
+<view>{{caption}} · {{Status.Ready}}</view>
+<button bindtap="onLocalTap">调用页面方法</button>

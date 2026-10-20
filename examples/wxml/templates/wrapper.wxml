@@ -1,0 +1,5 @@
+<!-- 本文件没有同名脚本；data 从 index.wxml 传入并继续向内层模板改名。 -->
+<import src="./card.wxml" />
+<template name="miniapp-wrapper">
+  <template is="miniapp-card" data="{{title:heading, Status, model, action, records, chainTitle:chainHeading}}" />
+</template>

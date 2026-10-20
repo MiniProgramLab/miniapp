@@ -1,0 +1,8 @@
+<!-- 本文件没有同名脚本；变量与成员先跳到使用处 data 的对应根字段。 -->
+<template name="miniapp-card">
+  <view>{{title}} · {{Status.Ready}}</view>
+  <view>{{chainTitle}}</view>
+  <view data-method="{{model.save}}" data-action="{{action}}" />
+  <button bindtap="onOpen">调用页面方法</button>
+  <view wx:for="{{records}}" wx:for-item="record">{{record.label}}</view>
+</template>

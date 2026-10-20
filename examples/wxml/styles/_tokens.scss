@@ -1,0 +1,13 @@
+/* 三层引用链的原始变量和混入声明。 */
+$brand: #1677ff;
+
+/** 提供示例中的居中样式。 */
+@mixin center {
+  display: flex;
+  align-items: center;
+}
+
+/** 返回示例中的基础间距。 */
+@function spacing() {
+  @return 16px;
+}
