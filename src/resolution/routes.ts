@@ -6,6 +6,8 @@ interface Catalog {
   readonly uri: string;
   readonly root: string;
   readonly manifest: RouteManifest;
+  /** 构建配置只补充注册依据，不参与源码注册编辑。 */
+  readonly generated?: readonly string[];
 }
 
 /** 缓存只保留有界、已校验的结果和修订，不能保留过期取消令牌。 */
@@ -82,6 +84,42 @@ export function createRouteResolver(reader: WorkspaceReader, scripts: ScriptDefi
     }
     for (const uri of candidates) if (await inspect(uri)) break;
     if (!catalog && files) for (const uri of await files.candidates('/app.json', request.document.uri, 'component')) if (await inspect(uri)) break;
+    if (catalog && files) {
+      const source = catalog;
+      const pages = new Map(source.manifest.pages.map((page) => [page.path, page]));
+      const tabs = new Set(source.manifest.tabs);
+      const generated: string[] = [];
+      let tabComplete = source.manifest.tabComplete;
+      let enclosing = false;
+      // 嵌套应用没有独立工程边界时，不借用外层工程的构建产物。
+      for (let directory = source.root, depth = 0; depth < 32 && directory.startsWith(boundary); depth++) {
+        if (directory !== source.root) for (const name of ['app.json', 'app.config.ts', 'app.config.js', 'app.jsonc']) if (await read(new URL(name, directory).href)) { enclosing = true; break; }
+        if (enclosing || await read(new URL('package.json', directory).href) || directory === boundary) break;
+        const parent = new URL('../', directory).href;
+        if (parent === directory) break;
+        directory = parent;
+      }
+      // 只接纳能映射回当前应用的产物，避免混入相邻应用或任意 app.json。
+      const application = new URL('app.json', source.root).href;
+      for (const uri of enclosing ? [] : await files.candidates('/app.json', request.document.uri, 'component')) {
+        if (uri === application || !(await files.candidates(uri, request.document.uri, 'file')).includes(application)) continue;
+        const document = await read(uri);
+        if (!document) continue;
+        const manifest = (await import('./routes-document')).jsonRoutes(uri, document.text);
+        if (!manifest.complete) continue;
+        let added = 0;
+        for (const page of manifest.pages) if (!pages.has(page.path)) {
+          pages.set(page.path, page);
+          if (manifest.tabs.includes(page.path)) tabs.add(page.path);
+          added++;
+        }
+        if (!added) continue;
+        generated.push(uri);
+        tabComplete &&= manifest.tabComplete;
+        reader.navigation?.record({ code: 'config', message: `构建产物为当前应用补充 ${added} 个页面注册，导航仍优先使用源码。`, uri });
+      }
+      if (generated.length) catalog = { ...source, generated, manifest: { ...source.manifest, pages: [...pages.values()], tabs: [...tabs], tabComplete } };
+    }
     for (const item of files?.dependencies ?? []) dependencies.set(item.uri, item.revision);
     if (catalog && revision && !exhausted && catalog.manifest.complete && !request.cancellation.isCancellationRequested && [...dependencies].every(([uri, value]) => revision(uri) === value)) {
       const rows = caches.get(revision) ?? [];
@@ -153,18 +191,19 @@ export function createRouteResolver(reader: WorkspaceReader, scripts: ScriptDefi
       let queryFields: NonNullable<import('../api').PageQuery['fields']> = [];
       const queries: import('../api').PageQuery[] = [];
       let queryComplete = true;
+      /** 产物补充的注册不可编辑，重构时保留不完整标记。 */
+      let generatedTarget = false;
+      /** 只有完整源码目录才能确认页面缺失。 */
+      const missing = (target: typeof targets[number]): void => {
+        if (contextComplete && manifest.complete && !state.exhausted() && (target.url.complete || !target.url.text.split(/[?#]/, 1)[0]!.includes('{动态}'))) diagnostics.push({ range: access.range, severity: 'warning', code: 'unregistered-route', message: `${bases.length > 1 && target.from ? `从 /${target.from} 导航时，` : ''}页面 /${target.path} 未在应用配置中注册。` });
+      };
       for (const target of targets) {
         if (!target.path) continue;
         const page = manifest.pages.find((page) => page.path === target.path);
-        if (!page) {
-          if (contextComplete && manifest.complete && (target.url.complete || !target.url.text.split(/[?#]/, 1)[0]!.includes('{动态}'))) diagnostics.push({ range: access.range, severity: 'warning', code: 'unregistered-route', message: `${bases.length > 1 && target.from ? `从 /${target.from} 导航时，` : ''}页面 /${target.path} 未在应用配置中注册。` });
-          continue;
-        }
-        const tab = manifest.tabs.includes(page.path);
-        if (manifest.tabComplete && (access.method === 'switchTab' ? !tab : ['navigateTo', 'redirectTo'].includes(access.method) && tab)) diagnostics.push({ range: access.range, severity: 'warning', code: 'route-navigation-method', message: tab ? `TabBar 页面 /${page.path} 应使用 switchTab 或 reLaunch。` : `switchTab 只能打开 TabBar 页面，/${page.path} 不是 TabBar 页面。` });
-        if (access.method === 'switchTab' && target.url.text.includes('?')) diagnostics.push({ range: access.range, severity: 'warning', code: 'route-tab-query', message: 'switchTab 的页面 URL 不能携带查询参数。' });
+        if (!page) { missing(target); continue; }
+        const generated = catalog.generated?.includes(page.definition.uri);
         let original: string | undefined;
-        const sources = [...new Set([...(await state.files?.candidates('/' + page.path, request.document.uri, 'component') ?? []), new URL(page.path, catalog.root).href])];
+        const sources = [...new Set([...(await state.files?.candidates('/' + page.path, request.document.uri, 'component') ?? []), new URL(page.path, catalog.root).href])].filter((uri) => !generated || !uri.startsWith(new URL('./', page.definition.uri).href));
         for (const item of state.files?.dependencies ?? []) state.dependencies.set(item.uri, item.revision);
         for (const base of sources) {
           for (const uri of extensions.map((extension) => base + extension)) {
@@ -178,12 +217,18 @@ export function createRouteResolver(reader: WorkspaceReader, scripts: ScriptDefi
           }
           if (original) break;
         }
+        // 已删除源码不能被残留产物中的注册和脚本掩盖。
+        if (generated && !original) { missing(target); continue; }
+        generatedTarget ||= !!generated;
+        const tab = manifest.tabs.includes(page.path);
+        if (manifest.tabComplete && (access.method === 'switchTab' ? !tab : ['navigateTo', 'redirectTo'].includes(access.method) && tab)) diagnostics.push({ range: access.range, severity: 'warning', code: 'route-navigation-method', message: tab ? `TabBar 页面 /${page.path} 应使用 switchTab 或 reLaunch。` : `switchTab 只能打开 TabBar 页面，/${page.path} 不是 TabBar 页面。` });
+        if (access.method === 'switchTab' && target.url.text.includes('?')) diagnostics.push({ range: access.range, severity: 'warning', code: 'route-tab-query', message: 'switchTab 的页面 URL 不能携带查询参数。' });
         if (!original) definitions.push({ ...page.definition, originRange: access.range });
         else {
           const from = bases.find((base) => base.path === target.from);
           links.push({ uri: original, path: page.path, url: target.url.text, root: catalog.root, ...(from ? { from } : {}) });
         }
-        descriptions.push(`/${page.path}\n${tab ? 'TabBar 页面' : page.package ? `分包：${page.package}${page.independent ? '（独立分包）' : ''}` : '主包页面'}\n注册配置：${catalog.uri}${bases.length > 1 && target.from ? `\n相对基准：/${target.from}` : ''}`);
+        descriptions.push(`/${page.path}\n${tab ? 'TabBar 页面' : page.package ? `分包：${page.package}${page.independent ? '（独立分包）' : ''}` : '主包页面'}\n注册配置：${page.definition.uri}${bases.length > 1 && target.from ? `\n相对基准：/${target.from}` : ''}`);
         if (queryEditing && original && !original.endsWith('.wxml')) {
           const info = await scripts.pageQuery?.(request, original);
           query = info?.type;
@@ -245,7 +290,7 @@ export function createRouteResolver(reader: WorkspaceReader, scripts: ScriptDefi
         }
       }
       if (request.cancellation.isCancellationRequested) return empty;
-      const result: RouteResult = { definitions: [...new Map(definitions.map((item) => [item.uri + ':' + item.range.start + ':' + item.range.end, item])).values()], completions: [...new Map(completions.map((item) => [item.label + ':' + item.insertText, item])).values()], diagnostics: [...new Map(diagnostics.map((item) => [item.code + ':' + item.message, item])).values()], targets: links, complete: manifest.complete && contextComplete && !state.exhausted(), ...(query ? { query } : {}), ...(descriptions.length ? { hover: { title: access.method, description: descriptions.join('\n\n'), range: access.range } } : {}) };
+      const result: RouteResult = { definitions: [...new Map(definitions.map((item) => [item.uri + ':' + item.range.start + ':' + item.range.end, item])).values()], completions: [...new Map(completions.map((item) => [item.label + ':' + item.insertText, item])).values()], diagnostics: [...new Map(diagnostics.map((item) => [item.code + ':' + item.message, item])).values()], targets: links, complete: manifest.complete && contextComplete && !state.exhausted() && !generatedTarget, ...(query ? { query } : {}), ...(descriptions.length ? { hover: { title: access.method, description: descriptions.join('\n\n'), range: access.range } } : {}) };
       for (const item of result.diagnostics) reader.navigation?.record({ code: 'context', message: item.message, uri: request.document.uri });
       if (!definitions.length) reader.navigation?.record({ code: 'missing', message: '当前 URL 或查询字段未得到可确定的源码定义；请核对页面注册、路径及已声明的查询字段。', uri: request.document.uri });
       if (revision && manifest.complete && manifest.tabComplete && queryComplete && contextComplete && state.valid()) {

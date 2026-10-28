@@ -67,6 +67,81 @@ const app = {
   'src/reports/detail/index.ts': 'Page({onLoad(options:{recordId:string;limit?:number}){}});',
 };
 
+/** 构建产物补全源码清单，路由字典本身不等同于页面注册。 */
+const generatedApp = {
+  ...app,
+  'src/app.json': JSON.stringify({ pages: ['pages/home/index'] }),
+  'webpack.config.js': `module.exports={output:{path:'dist'}}`,
+  'dist/app.json': app['src/app.json'],
+  'src/pages.json': '{"Detail":"/reports/detail/index"}',
+};
+
+test('构建补全的分包页面消除路由常量误报，定义和参数仍指向源码', async () => {
+  const graph = fixture({ ...generatedApp, 'src/pages/home/index.ts': `import pages from '../../pages.json';wx.navigateTo({url:pages.Det|ail});` });
+  assert.deepEqual(await graph.features.diagnostics!.provide(graph.request), []);
+  assert.deepEqual(await graph.definitions(), [{ path: 'src/reports/detail/index.ts', origin: 'Detail' }]);
+  assert.match((await graph.features.hover!.provide(graph.request))!.description, /独立分包[\s\S]*dist\/app.json/);
+  const query = fixture({ ...generatedApp, 'src/pages/home/index.ts': `wx.navigateTo({url:'/reports/detail/index?rec|'});` });
+  assert.ok((await query.features.completion!.provide(query.request)).some((item) => item.label === 'recordId'));
+  const template = fixture({ ...generatedApp, 'src/pages/home/index.wxml': '<navigator url="/reports/detail/in|dex"/>' }, 'src/pages/home/index.wxml');
+  assert.deepEqual(await template.features.diagnostics!.provide(template.request), []);
+  assert.ok((await template.definitions()).some((item) => item.path === 'src/reports/detail/index.ts'));
+});
+
+test('路由字典、未关联产物和损坏产物不能代替实际应用注册', async () => {
+  for (const changes of [
+    { 'dist/app.json': '{"pages":["pages/home/index"]}' },
+    { 'dist/app.json': '{"pages":[' },
+    { 'webpack.config.js': 'module.exports={}' },
+  ]) {
+    const graph = fixture({ ...generatedApp, ...changes, 'src/pages/home/index.ts': `import pages from '../../pages.json';wx.navigateTo({url:pages.Det|ail});` });
+    assert.equal((await graph.features.diagnostics!.provide(graph.request))[0]?.code, 'unregistered-route');
+  }
+  const missing = fixture({ ...generatedApp, 'src/pages/home/index.ts': `wx.navigateTo({url:'/reports/miss|ing/index'});` });
+  assert.equal((await missing.features.diagnostics!.provide(missing.request))[0]?.code, 'unregistered-route');
+});
+
+test('产物新增、更新、删除及源码删除都使路由诊断缓存失效', async () => {
+  const graph = fixture({ ...generatedApp, 'src/pages/home/index.ts': `wx.navigateTo({url:'/reports/detail/in|dex'});`, 'dist/reports/detail/index.js': 'Page({});' });
+  graph.documents.delete('file:///workspace/dist/app.json');
+  assert.equal((await graph.features.diagnostics!.provide(graph.request))[0]?.code, 'unregistered-route');
+  graph.documents.set('file:///workspace/dist/app.json', generatedApp['dist/app.json']);
+  assert.deepEqual(await graph.features.diagnostics!.provide(graph.request), []);
+  const reads = graph.reads();
+  assert.deepEqual(await graph.features.diagnostics!.provide({ ...graph.request }), []);
+  assert.equal(graph.reads(), reads);
+  graph.documents.set('file:///workspace/dist/app.json', '{"pages":["pages/home/index"]}');
+  assert.equal((await graph.features.diagnostics!.provide(graph.request))[0]?.code, 'unregistered-route');
+  graph.documents.set('file:///workspace/dist/app.json', generatedApp['dist/app.json']);
+  graph.documents.delete('file:///workspace/src/reports/detail/index.ts');
+  assert.equal((await graph.features.diagnostics!.provide(graph.request))[0]?.code, 'unregistered-route');
+  graph.documents.set('file:///workspace/src/reports/detail/index.ts', app['src/reports/detail/index.ts']);
+  assert.deepEqual(await graph.features.diagnostics!.provide(graph.request), []);
+  graph.documents.delete('file:///workspace/dist/app.json');
+  assert.equal((await graph.features.diagnostics!.provide(graph.request))[0]?.code, 'unregistered-route');
+});
+
+test('产物补全 TabBar 页面，同时保留源码草稿对已有页面的导航规则', async () => {
+  const generated = fixture({ ...generatedApp, 'src/pages/home/index.ts': `wx.navigateTo({url:'/pages/tab/in|dex'});` });
+  assert.equal((await generated.features.diagnostics!.provide(generated.request))[0]?.code, 'route-navigation-method');
+  const draft = fixture({ ...generatedApp, 'src/app.json': '{"pages":["pages/home/index","pages/tab/index"]}', 'src/pages/home/index.ts': `wx.navigateTo({url:'/pages/tab/in|dex'});` });
+  assert.deepEqual(await draft.features.diagnostics!.provide(draft.request), []);
+});
+
+test('嵌套应用不借用外层产物，独立子工程只读取自己的产物', async () => {
+  const files = {
+    ...generatedApp,
+    'src/other/app.json': '{"pages":["pages/home/index"]}',
+    'src/other/pages/home/index.ts': `wx.navigateTo({url:'/reports/detail/in|dex'});`,
+    'src/other/reports/detail/index.ts': 'Page({});',
+  };
+  const nested = fixture(files, 'src/other/pages/home/index.ts');
+  assert.equal((await nested.features.diagnostics!.provide(nested.request))[0]?.code, 'unregistered-route');
+  const separate = fixture({ ...files, 'src/other/package.json': '{}', 'src/other/webpack.config.js': `module.exports={output:{path:'dist'}}`, 'src/other/dist/app.json': generatedApp['dist/app.json'] }, 'src/other/pages/home/index.ts');
+  assert.deepEqual(await separate.features.diagnostics!.provide(separate.request), []);
+  assert.ok((await separate.definitions()).some((item) => item.path === 'src/other/reports/detail/index.ts'));
+});
+
 test('原生页面 URL 定义、分包说明和路径补全共享注册目录', async () => {
   const graph = fixture({ ...app, 'src/pages/home/index.ts': `Page({open(){wx.navigateTo({url:'/reports/det|ail/index?recordId=a'})}});` });
   assert.deepEqual(await graph.definitions(), [{ path: 'src/reports/detail/index.ts', origin: '/reports/detail/index?recordId=a' }]);
