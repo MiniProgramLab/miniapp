@@ -120,15 +120,16 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
     async references(request, targets, includeDeclaration) {
       return (await renameScript(reader, request, targets, '', options(request.document.uri), includeDeclaration)).map(({ uri, range, version }) => ({ uri, range, ...(version === undefined ? {} : { version }) }));
     },
-    /** 无注释时不生成空提示；多个实际调用页面的说明按文本去重。 */
+    /** 显式类型与原声明注释共同展示，多个调用页面的结果按文本去重。 */
     async hover(request, expression) {
       const wxs = await queryWxs(reader, request, expression, options(request.document.uri));
       if (wxs) return wxs.hover;
       const result = await definitions(request, expression, true);
       const descriptions = [...new Set(result.map((definition) => definition.description).filter((description): description is string => !!description))];
+      const types = [...new Set(result.map((definition) => definition.type).filter((type): type is string => !!type))];
       const range = result[0]?.originRange;
-      return descriptions.length && range && !request.cancellation.isCancellationRequested
-        ? { title: request.document.text.slice(range.start, range.end), description: descriptions.join('\n\n'), range } : undefined;
+      return (descriptions.length || types.length) && range && !request.cancellation.isCancellationRequested
+        ? { title: request.document.text.slice(range.start, range.end), ...(types.length ? { type: types.join(' | ') } : {}), description: descriptions.join('\n\n'), range } : undefined;
     },
   };
 }

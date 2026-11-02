@@ -75,6 +75,8 @@ export interface Hover {
   readonly title: string;
   readonly description: string;
   readonly range: TextRange;
+  /** 可选的使用处类型，不改变符号名称及原始注释。 */
+  readonly type?: string;
 }
 
 /** 当前文档中同步编辑的名称范围，正则描述允许保留联动的字符。 */

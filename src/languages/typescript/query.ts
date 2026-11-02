@@ -11,6 +11,8 @@ import { signature } from './semantic-types';
 export interface ScriptDefinition extends Definition {
   readonly description?: string;
   readonly signature?: HandlerSignature;
+  /** 显式类型随悬浮传递，源码导航仍使用原声明位置。 */
+  readonly type?: string;
 }
 
 /** 确定光标引用；data 字段名导航到绑定表达式，其余对象键及普通字符串跳过。 */
@@ -139,7 +141,8 @@ export async function query(project: ScriptProject, request: LanguageRequest, ex
     project.explainDefinition(file.fileName);
     const description = hover ? declarationDocumentation(declaration) || declarationDocumentation(candidate.declaration ?? candidate.node) : '';
     const handler = signature(values.checker, item.node);
-    result.set(`${file.fileName}:${range.start}:${range.end}`, { uri: file.fileName, range, originRange, ...(handler ? { signature: handler } : {}), ...(description ? { description } : {}), ...(document.version === undefined ? {} : { version: document.version }) });
+    const type = hover && (item.runtimeType ?? item.type);
+    result.set(`${file.fileName}:${range.start}:${range.end}`, { uri: file.fileName, range, originRange, ...(handler ? { signature: handler } : {}), ...(description ? { description } : {}), ...(type ? { type: values.checker.typeToString(type, item.node, ts.TypeFormatFlags.NoTruncation) } : {}), ...(document.version === undefined ? {} : { version: document.version }) });
   }
   if (!result.size) {
     const name = rootName(selected.node);

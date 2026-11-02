@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { CheckProvider, LanguageRequest, WorkspaceReader } from '../src/api';
-import { templateFileDiagnostics, provideFileDefinition } from '../src/languages/wxml/file-definition';
+import { templateFileDiagnostics, provideFileDefinition, provideTemplateDefinition } from '../src/languages/wxml/file-definition';
 import { createWxmlPlugin } from '../src/languages/wxml';
 import { checkWorkspace } from '../src/core/workspace-check';
 import { createNavigationTracking } from '../src/adapters/vscode/navigation-tracking';
@@ -19,6 +19,97 @@ function fixture(text: string, files: Record<string, string> = {}, root = 'file:
   const request: LanguageRequest = { document: { uri, text, languageId: 'wxml', version: 3 }, offset: 0, cancellation: { isCancellationRequested: false } };
   return { reader, request, documents, reads };
 }
+
+test('template is 通过公开提供器定位多行 import 中的具名声明', async () => {
+  const graph = fixture('<import\n src="./assets/skeleton.wxml"\n></import>\n<template\n is="skeleton"\n wx:if="{{loading}}"></template>', {
+    'assets/skeleton.wxml': '<template name="other"/>\n<template name="skeleton"><view/></template>',
+  });
+  const features = createWxmlPlugin(undefined, undefined, undefined, undefined, graph.reader).setup({ logger: { info() {}, error() {} }, subscriptions: { add: (item) => item } });
+  const offset = graph.request.document.text.lastIndexOf('skeleton');
+  const definitions = await features.definition!.provide({ ...graph.request, offset: offset + 2 });
+  assert.equal(definitions.length, 1);
+  const definition = definitions[0]!;
+  assert.equal(definition.uri, 'file:///resources/assets/skeleton.wxml');
+  assert.equal(graph.documents.get(definition.uri)!.slice(definition.range.start, definition.range.end), 'skeleton');
+  assert.deepEqual(definition.originRange, { start: offset, end: offset + 'skeleton'.length });
+  assert.equal(definition.version, 7);
+  assert.equal(graph.reads.get(definition.uri), 1);
+  assert.deepEqual(await provideTemplateDefinition({ ...graph.request, offset: offset - 4 }, graph.reader), []);
+});
+
+test('同文件模板优先使用请求草稿，选中名称后的末尾光标也能跳转', async () => {
+  const graph = fixture('<import src="./page.wxml"/><template name="card"/><template is="card"/>');
+  graph.documents.set(graph.request.document.uri, '<template name="old"/>');
+  const offset = graph.request.document.text.lastIndexOf('card') + 4;
+  const definitions = await provideTemplateDefinition({ ...graph.request, offset }, graph.reader);
+  assert.equal(definitions.length, 1);
+  assert.equal(definitions[0]!.uri, graph.request.document.uri);
+  assert.equal(definitions[0]!.version, 3);
+  assert.equal(graph.request.document.text.slice(definitions[0]!.range.start, definitions[0]!.range.end), 'card');
+  assert.equal(graph.reads.size, 0);
+});
+
+test('模板声明只来自当前文件和直接 import，不透传二次导入或 include', async () => {
+  const graph = fixture('<import src="./wrapper.wxml"/><include src="./included.wxml"/><template is="card"/>', {
+    'wrapper.wxml': '<import src="./nested.wxml"/><template name="wrapper"/>',
+    'nested.wxml': '<template name="card"/>', 'included.wxml': '<template name="card"/>', 'unrelated.wxml': '<template name="card"/>',
+  });
+  assert.deepEqual(await provideTemplateDefinition({ ...graph.request, offset: graph.request.document.text.lastIndexOf('card') }, graph.reader), []);
+  assert.deepEqual([...graph.reads.keys()], ['file:///resources/wrapper.wxml']);
+});
+
+test('远程模板别名及目录入口沿文件解析规则跳转，多来源保留并去重', async () => {
+  const graph = fixture('<import src="@shared/card"/><import src="@shared/card"/><import src="./folder"/><template is="card"/>', {
+    'actual/card.wxml': '<template name="card"/>', 'folder/index.wxml': '<template name="card"/>',
+  }, 'vscode-remote://ssh-remote+demo/project%20space/');
+  let contexts = 0;
+  const reader: WorkspaceReader = { ...graph.reader, fileResolver: () => {
+    contexts++;
+    return { candidates: async (path) => path === '@shared/card' ? [new URL('actual/card.wxml', graph.reader.root(graph.request.document.uri)!).href] : [] };
+  } };
+  const definitions = await provideTemplateDefinition({ ...graph.request, offset: graph.request.document.text.lastIndexOf('card') }, reader);
+  assert.deepEqual(definitions.map((item) => item.uri), ['actual/card.wxml', 'folder/index.wxml'].map((path) => new URL(path, graph.reader.root(graph.request.document.uri)!).href));
+  assert.equal(contexts, 1);
+  assert.ok([...graph.reads.values()].every((count) => count === 1));
+});
+
+test('注释、CDATA、WXS 伪标签及动态名称不作为模板调用或声明', async () => {
+  for (const text of ['<!-- <template is="card"/> -->', '<![CDATA[<template is="card"/>]]>', '<wxs module="tools">var text=\'<template is="card"/>\';</wxs>', '<view is="card"/>', '<template is="{{card}}"/>']) {
+    const graph = fixture('<template name="card"/>' + text);
+    assert.deepEqual(await provideTemplateDefinition({ ...graph.request, offset: graph.request.document.text.lastIndexOf('card') }, graph.reader), []);
+    assert.equal(graph.reads.size, 0);
+  }
+  const graph = fixture('<import src="./shared.wxml"/><import src="{{path}}"/><template is="card"/>', {
+    'shared.wxml': '<!-- <template name="card"/> --><![CDATA[<template name="card"/>]]><wxs module="tools">var text=\'<template name="card"/>\';</wxs><template name="card"/>',
+  });
+  const definitions = await provideTemplateDefinition({ ...graph.request, offset: graph.request.document.text.lastIndexOf('card') }, graph.reader);
+  assert.equal(definitions.length, 1);
+  assert.equal(definitions[0]!.range.start, graph.documents.get(definitions[0]!.uri)!.lastIndexOf('card'));
+});
+
+test('导入模板的草稿移动、改名及删除后，后续查询使用最新声明', async () => {
+  const graph = fixture('<import src="./shared.wxml"/><template is="card"/>', { 'shared.wxml': '<template name="card"/>' });
+  const request = { ...graph.request, offset: graph.request.document.text.lastIndexOf('card') };
+  const first = (await provideTemplateDefinition(request, graph.reader))[0]!;
+  graph.documents.set(first.uri, '\n\n<template name="card"/>');
+  assert.equal((await provideTemplateDefinition(request, graph.reader))[0]!.range.start, first.range.start + 2);
+  graph.documents.set(first.uri, '<template name="other"/>');
+  assert.deepEqual(await provideTemplateDefinition(request, graph.reader), []);
+  graph.documents.delete(first.uri);
+  assert.deepEqual(await provideTemplateDefinition(request, graph.reader), []);
+});
+
+test('模板声明解析中取消请求时丢弃已有的本地和导入结果', async () => {
+  const graph = fixture('<template name="card"/><import src="./shared.wxml"/><template is="card"/>', { 'shared.wxml': '<template name="card"/>' });
+  const cancellation = { isCancellationRequested: false };
+  const read = graph.reader.read;
+  graph.reader.read = async (uri) => { const document = await read(uri); cancellation.isCancellationRequested = true; return document; };
+  const request = { ...graph.request, offset: graph.request.document.text.lastIndexOf('card'), cancellation };
+  assert.deepEqual(await provideTemplateDefinition(request, graph.reader), []);
+  graph.reads.clear();
+  assert.deepEqual(await provideTemplateDefinition(request, graph.reader), []);
+  assert.equal(graph.reads.size, 0);
+});
 
 test('资源诊断与跳转共享模板、目录入口和 WXS 的真实路径规则', async () => {
   const graph = fixture('<import src="./shared"/><include src="./folder"/><wxs module="math" src="./math.wxs"/><include src="./missing.wxml"/><wxs module="lost" src="./lost.wxs"/>', {

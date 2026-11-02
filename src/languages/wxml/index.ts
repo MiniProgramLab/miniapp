@@ -3,7 +3,7 @@ export { templateFileReferences } from './file-definition';
 export { navigatorAccesses } from './routes';
 import { provideClassDefinition } from './definition';
 import { provideClassCompletions } from './class-completion';
-import { provideFileDefinition, templateFileDiagnostics } from './file-definition';
+import { provideFileDefinition, provideTemplateDefinition, templateFileDiagnostics } from './file-definition';
 import { scriptExpression, scriptModules } from './wxs';
 import { clearStructureCache, provideSymbols, provideFolding, provideSelections } from './structure';
 import { componentRefactors, templateRefactors } from './refactor';
@@ -114,6 +114,8 @@ export function createWxmlPlugin(styles?: StyleClassResolver, scripts?: ScriptDe
             if (request.cancellation.isCancellationRequested) return [];
             const files = reader && await provideFileDefinition(request, reader);
             if (files?.length) return files;
+            const templates = reader && await provideTemplateDefinition(request, reader);
+            if (templates?.length) return templates;
             const classes = styles && await provideClassDefinition(request, styles);
             if (classes?.length) return classes;
             const expression = scripts && scriptExpression(request);

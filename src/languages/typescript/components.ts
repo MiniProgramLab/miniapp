@@ -83,10 +83,14 @@ function properties(values: Values, project: ScriptProject, value: Value, seen =
         if (!implementations.length) continue;
         const item = implementations[0]!;
         const spec = values.fields(item);
-        const type = [...new Set([propertyType(values, spec.get('type')?.[0] ?? item), ...spec.get('optionalTypes')?.flatMap((entry) => values.elements(entry).map((type) => propertyType(values, type))) ?? []])].join(' | ');
         const defaults = spec.get('value') ?? spec.get('default');
+        const declared = values.defaultTypes(defaults ?? []);
+        const type = [...new Set(declared.length ? declared.map((type) => values.checker.typeToString(type, item.node, ts.TypeFormatFlags.NoTruncation))
+          : [propertyType(values, spec.get('type')?.[0] ?? item), ...spec.get('optionalTypes')?.flatMap((entry) => values.elements(entry).map((type) => propertyType(values, type))) ?? []])].join(' | ');
+        const alternatives = declared.map((type) => semanticType(values.checker, type, item.node));
+        const valueType = alternatives.length === 1 ? alternatives[0]! : alternatives.length ? { kind: 'unknown' as const, display: type, alternatives } : propertySemanticType(values, spec.get('type')?.[0] ?? item, type);
         const targets = implementations.map((entry) => location(entry.declaration ?? entry.node, project)).filter((entry): entry is ComponentLocation => !!entry);
-        result.set(name, { name, type, valueType: propertySemanticType(values, spec.get('type')?.[0] ?? item, type), defaultValue: defaults?.length ? defaults.map((entry) => render(values, entry)).join(' | ') : nativeDefault(type),
+        result.set(name, { name, type, valueType, defaultValue: defaults?.length ? defaults.map((entry) => render(values, entry)).join(' | ') : nativeDefault(type),
           required: spec.get('required')?.some((entry) => render(values, entry) === 'true') ?? false,
           description: implementations.map((entry) => documentation(entry.node)).filter(Boolean).join('\n'), definitions: targets });
       }
@@ -128,7 +132,7 @@ function instanceMembers(values: Values, project: ScriptProject, registered: Val
   /** 运行时字段使用声明类型避免字面量过窄，参数名称与完整签名分别显示。 */
   const describe = (name: string, path: readonly string[], declared: readonly Value[]): ComponentMember => {
     const actual = declared.flatMap((member) => values.resolve(member));
-    const nodeType = (member: Value): ts.Type => member.type ?? values.checker.getTypeAtLocation(member.declaration?.parent && ts.isPropertyAssignment(member.declaration.parent) ? member.declaration.parent : member.node);
+    const nodeType = (member: Value): ts.Type => member.runtimeType ?? member.type ?? values.checker.getTypeAtLocation(member.declaration?.parent && ts.isPropertyAssignment(member.declaration.parent) ? member.declaration.parent : member.node);
     const types = actual.map((member) => semanticType(values.checker, nodeType(member), member.node));
     const type = types.length === 1 ? types[0]! : { kind: 'unknown' as const, display: types.map((item) => item.display).join(' | ') || 'unknown', alternatives: types };
     const definitions = actual.map((member) => location(member.declaration ?? member.node, project)).filter((item): item is ComponentLocation => !!item);

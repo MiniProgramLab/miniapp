@@ -11,7 +11,7 @@ import { componentFunctions } from './events';
 export function valueType(values: Values, items: readonly Value[], depth = 0): SemanticType {
   if (depth > 5 || !items.length) return { kind: 'unknown', display: 'unknown' };
   const types = items.flatMap((item) => values.resolve(item)).map((item): SemanticType => {
-    if (!item.template && !item.members && !item.items) return semanticType(values.checker, item.type ?? values.checker.getTypeAtLocation(item.node), item.node);
+    if (!item.template && !item.members && !item.items) return semanticType(values.checker, item.runtimeType ?? item.type ?? values.checker.getTypeAtLocation(item.node), item.node);
     const node = item.node;
     if (ts.isStringLiteralLike(node)) return { kind: 'string', display: 'string', literal: node.text };
     if (ts.isNumericLiteral(node)) return { kind: 'number', display: 'number', literal: Number(node.text) };
@@ -140,7 +140,7 @@ export async function analyzeTemplate(project: ScriptProject, request: LanguageR
         if (item.members) return true;
         const resolved = values.resolve(item);
         return resolved.length && resolved.every((value) => {
-          const type = value.type ?? values.checker.getTypeAtLocation(value.node);
+          const type = value.runtimeType ?? value.type ?? values.checker.getTypeAtLocation(value.node);
           return !(type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) && !values.checker.getIndexTypeOfType(type, ts.IndexKind.String);
         });
       });

@@ -41,7 +41,7 @@ function fixture(files: Record<string, string>, entry = 'page.wxml', root = 'fil
   };
   /** 同时核对每个返回编辑的作用域及原始文本。 */
   const changes = async (name: string): Promise<readonly TextEdit[]> => rename.provide(request, name);
-  return { request, documents, features, targets, renamed, changes, rename, dataset, instances, reader };
+  return { request, documents, features, targets, renamed, changes, rename, dataset, instances, reader, scripts };
 }
 
 test('模板补全处理空表达式、成员和事件，继承方法覆盖与定义解析保持一致', async () => {
@@ -341,6 +341,75 @@ test('原生 properties 补全展示运行时类型，显式对象类型不会�
   const entry = fixture({ ...files, 'page.wxml': '{{entry.|}}' });
   assert.deepEqual(new Set((await entry.features.completion!.provide(entry.request)).map((item) => item.label)), new Set(['id', 'meta']));
   assert.equal((await entry.features.diagnostics!.provide(entry.request)).length, 0);
+});
+
+test('as 断言经过别名、重导出和括号后仍按指定对象类型补全并保留成员注释', async () => {
+  const files = {
+    'page.ts': `import type { UploadConfig } from './types';const original={legacy:true};const config=(original as unknown as UploadConfig);Component({data:{uploadConfig:config}});`,
+    'types.ts': `export type { UploadConfig } from './models';`,
+    'models.ts': `export interface UploadConfig {/** 上传数量 */ maxCount:number;nested:{enabled:boolean}}`,
+  };
+  const root = fixture({ ...files, 'page.wxml': '{{uploadC|}}' });
+  assert.equal((await root.features.completion!.provide(root.request))[0]!.detail, 'UploadConfig');
+  const members = fixture({ ...files, 'page.wxml': '{{uploadConfig.|}}' });
+  assert.deepEqual(new Set((await members.features.completion!.provide(members.request)).map((item) => item.label)), new Set(['maxCount', 'nested']));
+  const selected = fixture({ ...files, 'page.wxml': '{{uploadConfig.maxC|ount}}' });
+  const hover = await selected.features.hover!.provide(selected.request);
+  assert.equal(hover?.type, 'number');
+  assert.equal(hover?.description, '上传数量');
+  assert.deepEqual(await selected.targets(), ['models.ts:maxCount']);
+  const invalid = fixture({ ...files, 'page.wxml': '{{uploadConfig.leg|acy}}' });
+  assert.ok((await invalid.features.diagnostics!.provide(invalid.request)).some((item) => item.code === 'unknown-member'));
+});
+
+test('泛型、交叉类型、尖括号断言和显式注解限定成员类型，字面量不收窄使用处', async () => {
+  for (const value of ['({value:42,extra:true} as unknown as Box<string>)', '(<Box<string>>({} as unknown))', '(({value:"初始值"}) as Box<string> & {ready:boolean})', 'annotated']) {
+    const files = { 'page.ts': `interface Box<T>{value:T};const annotated:Box<string>={value:'初始值'};Page({data:{box:${value}}});`, 'page.wxml': '{{box.val|ue}}' };
+    const graph = fixture(files);
+    assert.equal((await graph.features.completion!.provide(graph.request))[0]!.detail, 'string', value);
+    assert.equal((await graph.features.hover!.provide(graph.request))?.type, 'string', value);
+  }
+  const graph = fixture({ 'page.ts': `Page({data:{caption:('初始值' as string),count:(1 as number)}});`, 'page.wxml': '{{cap|tion}}' });
+  assert.equal((await graph.features.completion!.provide(graph.request))[0]!.detail, 'string');
+});
+
+test('非空数组的断言类型经过模板传参和循环后覆盖初始化成员', async () => {
+  const graph = fixture({
+    'page.ts': `interface Array<T>{[n:number]:T;length:number};interface Entry {id:number;meta:{title:string}};Page({data:{records:[{legacy:true}] as unknown as Entry[]}});`,
+    'page.wxml': '<import src="./shared.wxml"/><template is="row" data="{{entries:records}}"/>',
+    'shared.wxml': '<template name="row"><view wx:for="{{entries}}">{{item.|}}</view></template>',
+  }, 'shared.wxml');
+  assert.deepEqual(new Set((await graph.features.completion!.provide(graph.request)).map((item) => item.label)), new Set(['id', 'meta']));
+});
+
+test('字典断言的静态和动态字符串及数字下标保留值类型及后续成员', async () => {
+  const script = `interface Array<T>{[n:number]:T;length:number};type RelationIndexesRecord={[key:string]:string[]};Component({data:{relationIndexesRecord:{} as RelationIndexesRecord,fieldReachLimit:{} as {[key:number]:number},entries:{} as {[key:string]:{label:string}}},properties:{key:String,index:Number}});`;
+  for (const [text, expected] of [['relationIndexesRecord[key]', 'string[]'], ['relationIndexesRecord["form"][0]', 'string'], ['fieldReachLimit[index]', 'number'], ['fieldReachLimit[3]', 'number']]) {
+    const graph = fixture({ 'page.ts': script, 'page.wxml': `{{${text}|}}` });
+    const info = await graph.scripts.analyze!(graph.request, { text: text!, range: { start: 2, end: 2 + text!.length }, bindings: [] });
+    assert.equal(info?.type.display, expected, text);
+    assert.deepEqual(info?.diagnostics, []);
+  }
+  const graph = fixture({ 'page.ts': script, 'page.wxml': '{{entries[key].|}}' });
+  assert.deepEqual((await graph.features.completion!.provide(graph.request)).map((item) => [item.label, item.detail]), [['label', 'string']]);
+});
+
+test('properties 默认值的枚举断言统一用于模板补全、悬浮和组件参数类型', async () => {
+  const script = `enum MathTypeEnum {Smart=1,Free=2};Component({properties:{/** 口算类型 */ mathType:{type:Number,value:MathTypeEnum.Smart as MathTypeEnum},count:{type:Number,value:(1)}}});`;
+  const graph = fixture({ 'page.ts': script, 'page.wxml': '{{math|Type}}' });
+  assert.equal((await graph.features.completion!.provide(graph.request))[0]!.detail, 'MathTypeEnum');
+  assert.equal((await graph.features.hover!.provide(graph.request))?.type, 'MathTypeEnum');
+  const info = await createComponentScriptResolver(graph.reader).inspect(graph.request, 'file:///workspace/page.ts');
+  assert.equal(info?.properties.find((item) => item.name === 'mathType')?.type, 'MathTypeEnum');
+  assert.deepEqual(info?.properties.find((item) => item.name === 'mathType')?.valueType?.alternatives?.map((item) => item.literal), [1, 2]);
+  assert.equal(info?.properties.find((item) => item.name === 'count')?.type, 'number');
+  const files = { 'page.ts': 'Page({});', 'page.json': '{"usingComponents":{"math-panel":"./panel"}}', 'panel.ts': script };
+  const completion = fixture({ ...files, 'page.wxml': '<math-panel math-type="|"/>' });
+  assert.deepEqual((await completion.features.completion!.provide(completion.request)).map((item) => item.label), ['{{1}}', '{{2}}']);
+  for (const [value, invalid] of [[2, false], [3, true]] as const) {
+    const consumer = fixture({ ...files, 'page.wxml': `<math-panel math-type="{{${value}}}"/>|` });
+    assert.equal((await consumer.features.diagnostics!.provide(consumer.request)).some((item) => item.code === 'property-type'), invalid);
+  }
 });
 
 test('模板补全跳过注释和字符串，并公开当前 WXS 模块名称', async () => {

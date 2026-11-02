@@ -1,4 +1,4 @@
-import type { Definition, Diagnostic, FileReference, LanguageRequest, ProjectFileResolver, WorkspaceReader } from '../../api';
+import type { Definition, Diagnostic, FileReference, LanguageRequest, ProjectFileResolver, TextRange, WorkspaceReader, WorkspaceText } from '../../api';
 import { scanTags, tagAt } from './parser';
 import type { TagToken } from './parser';
 
@@ -51,6 +51,53 @@ export async function provideFileDefinition(request: LanguageRequest, reader: Wo
   const item = tag && tagReference(tag, request.document.text);
   if (!item || request.offset < item.range.start || request.offset >= item.range.end) return [];
   return resolveReference(request, reader, item, reader.fileResolver?.(request.document.uri, request.cancellation));
+}
+
+/** 静态模板调用只查当前文件和直接导入，不沿 include 或二次 import 扩大作用域。 */
+export async function provideTemplateDefinition(request: LanguageRequest, reader: WorkspaceReader): Promise<readonly Definition[]> {
+  if (request.cancellation.isCancellationRequested) return [];
+  const tag = tagAt(request.document.text, request.offset);
+  const range = tag?.attributes.find((attribute) => attribute.name === 'is')?.valueRange;
+  if (!tag || tag.closing || tag.name !== 'template' || !range || request.offset < range.start || request.offset > range.end) return [];
+  const name = request.document.text.slice(range.start, range.end);
+  if (!name || name.includes('{{')) return [];
+  const result = templateDeclarations(request.document.uri, request.document, name, range);
+  const imports = [...scanTags(request.document.text)].filter((item) => !item.closing && item.name === 'import');
+  if (!imports.length) return result;
+  try { new URL('./', request.document.uri); } catch { return result; }
+  const reads = new Map<string, ReturnType<WorkspaceReader['read']>>();
+  const visited = new Set([request.document.uri]);
+  const files = reader.fileResolver?.(request.document.uri, request.cancellation);
+  const snapshot: WorkspaceReader = { ...reader,
+    /** 路径解析与声明扫描共用草稿快照，重复导入不重复读取。 */
+    read: (uri) => {
+      if (!reads.has(uri)) reads.set(uri, uri === request.document.uri ? Promise.resolve(request.document) : reader.read(uri));
+      return reads.get(uri)!;
+    },
+  };
+  if (imports.length > 2000) reader.navigation?.record({ code: 'budget', message: '模板导入超过两千处查找上限，未完成全部声明查找。', uri: request.document.uri });
+  for (const imported of imports.slice(0, 2000)) {
+    if (request.cancellation.isCancellationRequested) return [];
+    const reference = tagReference(imported, request.document.text);
+    if (!reference || reference.reference.includes('{{')) continue;
+    for (const target of await resolveReference(request, snapshot, reference, files)) {
+      if (visited.has(target.uri)) continue;
+      visited.add(target.uri);
+      const document = await snapshot.read(target.uri);
+      if (document) result.push(...templateDeclarations(target.uri, document, name, range));
+    }
+  }
+  return request.cancellation.isCancellationRequested ? [] : result;
+}
+
+/** 定义链接选中 name 原始值，保留目标版本以排除过期草稿。 */
+function templateDeclarations(uri: string, document: WorkspaceText, name: string, originRange: TextRange): Definition[] {
+  return [...scanTags(document.text)].flatMap((tag) => {
+    if (tag.closing || tag.name !== 'template') return [];
+    const range = tag.attributes.find((attribute) => attribute.name === 'name')?.valueRange;
+    return range && document.text.slice(range.start, range.end) === name
+      ? [{ uri, range, originRange, ...(document.version !== undefined ? { version: document.version } : {}) }] : [];
+  });
 }
 
 /** 跳转与诊断共享同一候选遍历，目录入口、别名及源码映射不能产生两套结果。 */

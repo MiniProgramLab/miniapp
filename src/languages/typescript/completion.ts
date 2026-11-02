@@ -42,8 +42,8 @@ export async function completeTemplate(project: ScriptProject, request: Language
     if (!name.startsWith(site.prefix) || !/^[$\p{ID_Start}_][$\p{ID_Continue}]*$/u.test(name)) continue;
     const values = context!.values;
     const resolved = items.flatMap((item) => values.resolve(item));
-    if (expression.event && !resolved.some((item) => ts.isFunctionLike(item.node) || values.checker.getSignaturesOfType(item.type ?? values.checker.getTypeAtLocation(item.node), ts.SignatureKind.Call).length)) continue;
-    const types = resolved.filter((item) => !item.template).map((item) => values.checker.typeToString(item.type ?? values.checker.getTypeAtLocation(item.node), item.node, ts.TypeFormatFlags.NoTruncation));
+    if (expression.event && !resolved.some((item) => ts.isFunctionLike(item.node) || values.checker.getSignaturesOfType(item.runtimeType ?? item.type ?? values.checker.getTypeAtLocation(item.node), ts.SignatureKind.Call).length)) continue;
+    const types = resolved.filter((item) => !item.template).map((item) => values.checker.typeToString(item.runtimeType ?? item.type ?? values.checker.getTypeAtLocation(item.node), item.node, ts.TypeFormatFlags.NoTruncation));
     const docs = [...items, ...resolved].filter((item) => !item.template).map((item) => declarationDocumentation(item.declaration ?? item.node)).filter(Boolean);
     result.push({ label: name, kind: 'value', detail: [...new Set(types)].join(' | ') || (context?.localDefinitions.has(name) ? '模板局部变量' : '模板字段'), documentation: [...new Set(docs)].join('\n'), insertText: name, range: site.range });
   }

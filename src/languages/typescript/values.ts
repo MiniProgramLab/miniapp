@@ -6,8 +6,9 @@ export interface Value {
   readonly registrationKind?: 'page' | 'component' | 'behavior';
   readonly node: ts.Node;
   readonly declaration?: ts.Node;
+  /** 显式断言或注解限定使用处的语义类型。 */
   readonly type?: ts.Type;
-  /** properties 的运行时值使用声明类型，不能把 type/value 配置对象暴露给模板。 */
+  /** 成员和索引投影直接使用声明类型，不再解析初始化值或参数配置。 */
   readonly runtimeType?: ts.Type;
   readonly bindings: ReadonlyMap<ts.Symbol | ts.ParameterDeclaration, Value>;
   /** 模板内构造的值保留位置及成员，避免交给脚本类型检查器误解析。 */
@@ -127,9 +128,20 @@ export class Values {
 
   /** 静态键优先读取对象成员；未知数组下标保留元素候选。 */
   access(value: Value, keys: readonly string[], seen = new Set<ts.Node>()): Value[] {
-    if (!keys.length) return this.elements(value, seen);
+    if (!keys.length) return this.indexed(value, undefined, seen);
     const fields = this.fields(value, seen);
-    return [...new Set(keys)].flatMap((key) => fields.get(key) ?? (/^(?:0|[1-9]\d*)$/.test(key) ? this.element(value, Number(key), seen) : []));
+    return [...new Set(keys)].flatMap((key) => fields.get(key) ?? (/^(?:0|[1-9]\d*)$/.test(key) ? this.element(value, Number(key), seen) : this.indexed(value, key, seen)));
+  }
+
+  /** 字典下标遵循数字或字符串索引签名，动态下标保留已知值类型。 */
+  private indexed(value: Value, key: string | undefined, seen: Set<ts.Node>): Value[] {
+    return this.resolve(value, seen).flatMap((resolved) => {
+      if (resolved.template || resolved.members || resolved.items || ts.isSourceFile(resolved.node)) return key === undefined ? this.elements(resolved, seen) : [];
+      const type = resolved.runtimeType ?? resolved.type ?? this.checker.getTypeAtLocation(resolved.node);
+      const number = key === undefined || /^(?:0|[1-9]\d*)$/.test(key);
+      const indexed = number && this.checker.getIndexTypeOfType(type, ts.IndexKind.Number) || this.checker.getIndexTypeOfType(type, ts.IndexKind.String);
+      return indexed ? [{ ...resolved, type: indexed, runtimeType: indexed }] : key === undefined ? this.elements(resolved, seen) : [];
+    });
   }
 
   /** 逐层还原解构的容器，包括嵌套对象、数组及工厂参数的调用实参。 */
@@ -271,12 +283,21 @@ export class Values {
     const { node, bindings } = value;
     if (this.cancelled() || ++this.steps > 12000 || seen.has(node) || seen.size > 80) return [];
     if (value.template || value.members || value.items || value.runtimeType) return [value];
+    // 先追踪原值再恢复显式类型，别名链不会丢失断言或源码位置。
+    if (value.type) {
+      const { type, ...source } = value;
+      return this.resolve(source, seen).map((item) => ({ ...item, type }));
+    }
     seen = new Set(seen).add(node);
     /** 子表达式重新计算类型，避免把父对象类型错误传递给其成员。 */
     const next = (target: ts.Node, declaration = value.declaration): Value => ({ node: target, bindings, ...(declaration ? { declaration } : {}) });
-    if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node) || ts.isAsExpression(node) || ts.isTypeAssertionExpression(node) || ts.isSatisfiesExpression(node)) {
-      const type = this.checker.getTypeAtLocation(node);
-      return this.resolve({ ...next(node.expression), type }, seen);
+    if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
+      const type = value.type ?? this.checker.getTypeAtLocation(node);
+      return this.resolve(next(node.expression), seen).map((item) => ({ ...item, type }));
+    }
+    if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node) || ts.isSatisfiesExpression(node)) {
+      return this.resolve(next(node.expression), seen).map((item) => value.type ? { ...item, type: value.type }
+        : ts.isNonNullExpression(node) && item.type ? { ...item, type: this.checker.getNonNullableType(item.type) } : item);
     }
     if (ts.isIdentifier(node)) {
       const symbol = this.checker.getSymbolAtLocation(node);
@@ -304,7 +325,8 @@ export class Values {
       if (bound) return this.resolve(bound, seen);
       if (!node.initializer) return [value];
       const initial = next(node.initializer, node.name);
-      return this.resolve('type' in node && node.type ? { ...initial, type: this.checker.getTypeAtLocation(node) } : initial, seen);
+      const resolved = this.resolve(initial, seen);
+      return 'type' in node && node.type ? resolved.map((item) => ({ ...item, type: this.checker.getTypeAtLocation(node) })) : resolved;
     }
     if (ts.isBindingElement(node)) {
       return this.destructure(value, node, seen);
@@ -437,6 +459,8 @@ export class Values {
             }
           }
         }
+        // 显式类型限定可见成员，初始化对象中的额外字段不参与提示。
+        if (resolved.runtimeType || resolved.type) for (const name of own.keys()) if (!inferred.has(name)) own.delete(name);
         for (const [name, items] of inferred) own.set(name, items);
       }
       for (const [name, values] of own) result.set(name, [...(result.get(name) ?? []), ...values]);
@@ -459,15 +483,23 @@ export class Values {
     for (const resolved of this.resolve(value, seen)) {
       if (resolved.items) { result.push(...resolved.items); continue; }
       if (resolved.template || resolved.members || ts.isSourceFile(resolved.node)) continue;
+      const type = resolved.runtimeType ?? resolved.type ?? this.checker.getTypeAtLocation(resolved.node);
+      const element = this.checker.getIndexTypeOfType(type, ts.IndexKind.Number);
+      if (resolved.runtimeType) {
+        if (element) result.push({ ...resolved, type: element, runtimeType: element });
+        continue;
+      }
       if (ts.isArrayLiteralExpression(resolved.node)) {
-        for (const element of resolved.node.elements) {
-          if (ts.isSpreadElement(element)) result.push(...this.elements({ ...resolved, node: element.expression }, new Set(seen).add(resolved.node)));
-          else result.push({ node: element, bindings: resolved.bindings });
+        for (const [index, item] of resolved.node.elements.entries()) {
+          if (ts.isSpreadElement(item)) result.push(...this.elements({ node: item.expression, bindings: resolved.bindings }, new Set(seen).add(resolved.node)));
+          else {
+            const member = resolved.type && this.checker.getPropertyOfType(type, String(index));
+            const declared = resolved.type && (member ? this.checker.getTypeOfSymbolAtLocation(member, item) : element);
+            result.push({ node: item, bindings: resolved.bindings, ...(declared ? { type: declared } : {}) });
+          }
         }
       }
-      const type = resolved.type ?? this.checker.getTypeAtLocation(resolved.node);
-      const element = this.checker.getIndexTypeOfType(type, ts.IndexKind.Number);
-      if (element && !result.length) result.push({ ...resolved, type: element });
+      if (element && !result.length) result.push({ ...resolved, type: element, runtimeType: element });
     }
     return result;
   }
@@ -509,6 +541,12 @@ export class Values {
     for (const item of items) {
       const before = result.length;
       const spec = this.fields(item);
+      const defaults = spec.get('value') ?? spec.get('default') ?? [];
+      const declared = this.defaultTypes(defaults);
+      if (declared.length) {
+        result.push(...declared.map((type) => ({ ...item, type, runtimeType: type })));
+        continue;
+      }
       const constructors = [...spec.get('type') ?? [item], ...spec.get('optionalTypes')?.flatMap((value) => this.elements(value)) ?? []];
       for (const candidate of constructors) {
         const node = ts.isPropertyAssignment(candidate.node) ? candidate.node.initializer : candidate.node;
@@ -526,12 +564,16 @@ export class Values {
         if (type) result.push({ ...item, type, runtimeType: type });
       }
       if (result.length === before) {
-        const defaults = spec.get('value') ?? spec.get('default') ?? [];
         const unknown = this.checker.getAnyType();
         result.push(...defaults.length ? defaults.flatMap((value) => this.resolve(value)).map((value) => ({ ...value, declaration: item.declaration ?? value.node })) : [{ ...item, type: unknown, runtimeType: unknown }]);
       }
     }
     return result;
+  }
+
+  /** 参数默认值的断言或显式注解优先于宽泛的运行时构造类型。 */
+  defaultTypes(items: readonly Value[]): ts.Type[] {
+    return items.flatMap((item) => this.resolve(item)).flatMap((item) => item.runtimeType ?? item.type ?? []);
   }
 
   /** 数据路径只读取状态和属性，实例方法或自定义导出不会覆盖内部 data 字段。 */

@@ -458,7 +458,7 @@ export function createLanguageHost(logger: Logger, reader?: WorkspaceReader): La
             async provideHover(document, position, token) {
               const result = await invoke(document, token, () => active, logger, `[${plugin.id}] 悬浮`,
                 () => hover.provide(toRequest(document, position, token)));
-              return result ? new vscode.Hover(toMarkdown([result.title, result.description].filter(Boolean).join('\n\n')), toRange(document, result.range)) : undefined;
+              return result ? new vscode.Hover(toMarkdown([result.title + (result.type ? ': ' + result.type : ''), result.description].filter(Boolean).join('\n\n')), toRange(document, result.range)) : undefined;
             },
           }));
         }
