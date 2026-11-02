@@ -47,6 +47,27 @@ test('变量、枚举和函数沿导入别名及重导出链回到原始声明',
   }
 });
 
+test('本地字面量、断言对象和方法直接定位，跳转不读取无关导入', async () => {
+  const files = { 'index.ts': `import shared from './heavy';Component({behaviors:[shared],data:{count:0,uploadConfig:{} as UploadConfig},methods:{submit(){}}});`, 'heavy.ts': 'export default Behavior({data:{inherited:true}});' };
+  for (const [template, name] of [['{{co|unt}}', 'count'], ['{{uploadCon|fig}}', 'uploadConfig'], ['<view bindtap="sub|mit"/>', 'submit']]) {
+    const graph = fixture(template!, files);
+    assert.deepEqual(await graph.targets(), [`index.ts:${name}`]);
+    assert.deepEqual(graph.reads, ['file:///workspace/index.ts']);
+    assert.equal((await graph.definitions())[0]!.version, 3);
+  }
+});
+
+test('动态展开、脚本别名和类型限定的数据对象仍沿完整语义确认来源', async () => {
+  const files = { 'source.ts': 'export const title="原始标题";' };
+  for (const script of [
+    `import {title} from './source';Page({data:{title}});`,
+    `import {title} from './source';Page({data:{...{title}}});`,
+    `import {title} from './source';const data={title};Page({data});`,
+  ]) assert.deepEqual(await fixture('{{ti|tle}}', { ...files, 'index.ts': script }).targets(), ['source.ts:title']);
+  const hidden = fixture('{{hid|den}}', { 'index.ts': `Page({data:({hidden:true} as unknown as {visible:boolean})});` });
+  assert.deepEqual(await hidden.targets(), []);
+});
+
 test('括号、可选链、静态字符串下标和中文标识符', async () => {
   assert.deepEqual(await fixture('{{(Status)?.["Rea|dy"]}}', chain).targets(), ['original.ts:Ready']);
   assert.deepEqual(await fixture('{{名|称}}', { 'index.ts': 'const 来源 = "值"; Page({data:{名称:来源}})' }).targets(), ['index.ts:来源']);

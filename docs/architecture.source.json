@@ -296,6 +296,7 @@
         "src/languages/typescript/data-path-key.ts",
         "src/languages/typescript/data-paths.ts",
         "src/languages/typescript/dataset.ts",
+        "src/languages/typescript/direct-definition.ts",
         "src/languages/typescript/documentation.ts",
         "src/languages/typescript/events.ts",
         "src/languages/typescript/expression-names.ts",

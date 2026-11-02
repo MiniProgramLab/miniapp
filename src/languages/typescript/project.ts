@@ -335,6 +335,28 @@ export class ScriptProject {
     }
   }
 
+  /** 打开、关闭或保存同内容文件时只刷新快照版本，保留已建立的类型图。 */
+  private async unchanged(cached: CachedProject): Promise<boolean> {
+    const revision = this.reader.revision!;
+    const changed = [...cached.revisions].filter(([uri, version]) => revision(uri) !== version);
+    if (!changed.length) return true;
+    if (changed.length > 32 || changed.some(([uri]) => !cached.documents.has(uri))) return false;
+    const replacements = new Map<string, WorkspaceText | undefined>();
+    const versions = new Map(cached.revisions);
+    for (const [uri] of changed) {
+      if (this.cancelled) return false;
+      const version = revision(uri);
+      const document = uri === this.request.document.uri ? this.request.document : await this.reader.read(uri);
+      if (document?.text !== cached.documents.get(uri)?.text || revision(uri) !== version) return false;
+      replacements.set(uri, document);
+      versions.set(uri, version);
+    }
+    if ([...versions].some(([uri, version]) => revision(uri) !== version)) return false;
+    for (const [uri, document] of replacements) cached.documents.set(uri, document);
+    for (const [uri, version] of versions) cached.revisions.set(uri, version);
+    return true;
+  }
+
   /** 找到同名源码后建立仅在内存运行的类型检查器。 */
   async create(entryUri?: string, additional: readonly string[] = []): Promise<{ program: ts.Program; entry: ts.SourceFile } | undefined> {
     if (this.built) return this.program;
@@ -345,8 +367,8 @@ export class ScriptProject {
     const key = JSON.stringify([this.root, this.request.document.uri, entryUri, additional, this.settings]);
     // 普通模板文本不进入脚本 Program，编辑模板仍可复用未变化的页面脚本图。
     const input = /\.wxml$/i.test(this.request.document.uri) ? undefined : this.request.document.text;
-    const cached = cache?.find((item) => item.key === key && item.input === input && [...item.revisions].every(([uri, version]) => revision!(uri) === version));
-    if (cached) {
+    const cached = cache?.find((item) => item.key === key && item.input === input);
+    if (cached && await this.unchanged(cached) && !this.cancelled) {
       this.reader.navigation?.record({ code: 'cached', message: `复用已核验依赖修订的完整脚本图，包含 ${cached.sources.size} 份源码及 ${Object.keys(cached.options.paths ?? {}).length} 条 paths 映射。`, uri: cached.program.entry.fileName });
       for (const [uri, document] of cached.documents) if (uri !== this.request.document.uri) this.documents.set(uri, document);
       for (const [uri, source] of cached.sources) this.sources.set(uri, source);

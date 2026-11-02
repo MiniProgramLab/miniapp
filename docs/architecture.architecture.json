@@ -817,7 +817,7 @@
     },
     {
       "dot": "emerald",
-      "title": "TypeScript / JavaScript · 26 个源文件",
+      "title": "TypeScript / JavaScript · 27 个源文件",
       "items": [
         "目录：src/languages/typescript",
         "公开导出：createComponentScriptResolver、createDataPathPlugin、createScriptNavigationPlugin、createScriptResolver、createWxsPlugin",

@@ -57,6 +57,8 @@ export interface ComponentScriptInfo {
 export interface ComponentScriptResolver {
   /** 读取脚本或 JSON 配置，绝不执行工程代码。 */
   inspect(request: LanguageRequest, uri: string, includeInstance?: boolean): Promise<ComponentScriptInfo | undefined>;
+  /** 标签跳转只需注册位置，复杂包装器仍可回退到完整语义解析。 */
+  locate?(request: LanguageRequest, uri: string): Promise<readonly ComponentLocation[]>;
 }
 
 /** 组件标签、参数及插槽共享一套源码解析规则。 */

@@ -83,7 +83,7 @@ test('动态模板路径、缺失别名和错误配置分别报告，不执行�
 });
 
 test('脚本预算耗尽在仍有部分定义时也明确记录，取消后不生成候选', async () => {
-  const graph = fixture({ 'page.wxml': '<view bindtap="ru|n"/>', 'page.ts': "import {shared} from './shared';Component({behaviors:[shared],methods:{run(){}}});", 'shared.ts': 'export const shared=Behavior({methods:{other(){}}});' }, { maxFiles: 1 });
+  const graph = fixture({ 'page.wxml': '<view bindtap="ru|n"/>', 'page.ts': "import {shared} from './shared';const action=()=>{};Component({behaviors:[shared],methods:{run:action}});", 'shared.ts': 'export const shared=Behavior({methods:{other(){}}});' }, { maxFiles: 1 });
   try {
     const result = await graph.run();
     assert.equal(result.value.length, 1);

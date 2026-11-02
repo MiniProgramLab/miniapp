@@ -99,16 +99,23 @@ export function createWxsPlugin(reader: WorkspaceReader, options: (uri: string) 
 export function createComponentScriptResolver(reader: WorkspaceReader, options: (uri: string) => ScriptOptions = () => ({})): ComponentScriptResolver {
   /** 同一端口复用工厂，组件语义图保持原有请求隔离。 */
   let service: ComponentScriptResolver | undefined;
+  /** 定位与完整检查共用延迟初始化后的端口。 */
+  const load = async (): Promise<ComponentScriptResolver> => {
+    service ??= (await import('./components')).createComponentScriptResolver(reader, options);
+    return service;
+  };
   return {
+    /** 普通组件标签按需读取注册位置，保留复杂入口的语义兜底。 */
+    async locate(request, uri) {
+      if (request.cancellation.isCancellationRequested) return [];
+      const resolver = await load();
+      return request.cancellation.isCancellationRequested ? [] : resolver.locate!(request, uri);
+    },
     /** 已取消的组件查询不初始化编译器或读取后续文件。 */
     async inspect(request, uri, includeInstance) {
       if (request.cancellation.isCancellationRequested) return undefined;
-      if (!service) {
-        const module = await import('./components');
-        if (request.cancellation.isCancellationRequested) return undefined;
-        service ??= module.createComponentScriptResolver(reader, options);
-      }
-      return service.inspect(request, uri, includeInstance);
+      const resolver = await load();
+      return request.cancellation.isCancellationRequested ? undefined : resolver.inspect(request, uri, includeInstance);
     },
   };
 }

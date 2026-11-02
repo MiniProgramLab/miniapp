@@ -16,6 +16,7 @@ import { componentExtractionScope, extractComponentParent } from './refactor';
 import { datasetAccess, datasetUses } from './dataset';
 import { instanceAccess, instanceQueries, instanceTemplates } from './instances';
 import { routeQueries, routeManifest, pageQuery } from './routes';
+import { directTemplateDefinition } from './direct-definition';
 
 /** 提供独立脚本语义端口，语言消费者无需依赖 TypeScript 或 VS Code。 */
 export function createScriptResolver(reader: WorkspaceReader, options: (uri: string) => ScriptOptions = () => ({})): ScriptDefinitionResolver {
@@ -23,6 +24,10 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
   async function definitions(request: LanguageRequest, expression: TemplateExpression, hover = false, rename = false): Promise<readonly ScriptDefinition[]> {
     const wxs = await queryWxs(reader, request, expression, options(request.document.uri), rename);
     if (wxs) return wxs.definitions;
+    if (!hover && !rename && !options(request.document.uri).adapters?.length) {
+      const direct = await directTemplateDefinition(reader, request, expression);
+      if (direct) return direct;
+    }
     const projects = new Map<string, ScriptProject>();
     const result = new Map<string, ScriptDefinition>();
     const contexts = expression.contexts?.length ? expression.contexts : [{ uri: request.document.uri, scopes: undefined }];

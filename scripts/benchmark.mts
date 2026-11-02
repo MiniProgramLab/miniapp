@@ -25,6 +25,8 @@ const uri = file ? pathToFileURL(resolve(file)).href : root + 'page.wxml';
 const fixtures = new Map<string, string>([[root + 'page.wxml', '<view bindtap="submit"/>'], [root + 'page.ts', `import shared from './shared';Component({behaviors:[shared]});`], [root + 'shared.ts', `export default Behavior({methods:{/** 提交 */ submit(){}}});`]]);
 /** 基准运行期间使用固定快照，以便对比相同输入的冷查询与连续查询。 */
 const snapshots = new Map<string, string | undefined>();
+/** 模拟跳转打开目标缓冲区，只改变版本，不改动源码内容。 */
+const opened = new Map<string, number>();
 let reads = 0;
 /** 文件发现沿工作区遍历，排除依赖和输出目录；基准快照仅在本进程保留。 */
 const catalog = new Map<string, readonly string[]>();
@@ -60,7 +62,7 @@ const reader: WorkspaceReader = { root: () => root, ...(process.argv.includes('-
   if (!snapshots.has(target)) {
     try { snapshots.set(target, await readFile(new URL(target), 'utf8')); } catch { snapshots.set(target, undefined); }
   }
-  const text = snapshots.get(target); return text === undefined ? undefined : { text };
+  const text = snapshots.get(target); return text === undefined ? undefined : { text, ...(opened.has(target) ? { version: opened.get(target)! } : {}) };
 } };
 const text = (await reader.read(uri))?.text;
 if (!text || !text.includes(name)) throw new Error('模板不存在或不包含查询名称，请指定模板、名称和工作区目录。');
@@ -223,9 +225,13 @@ for (let query = 0; query < 6; query++) {
   const current = { ...request };
   const schema = pageQuery ? await scripts.pageQuery?.(current, uri) : undefined;
   const definitions = pageQuery ? schema?.fields?.flatMap((field) => field.definitions) ?? [] : dataPath ? await dataPaths.definition!.provide(current) : route ? await routeFeatures.definition!.provide(current) : instance ? await instances.definition!.provide(request) : dataset ? await fields.definition!.provide(request) : component ? await components.definition(request) : await scripts.resolve(request, expression!);
-  const completions = pageQuery ? schema?.fields ?? [] : dataPath ? await dataPaths.completion!.provide({ ...current }) : route ? await routeFeatures.completion!.provide({ ...current }) : instance ? await instances.completion!.provide(request) : dataset ? await fields.completion!.provide(request) : component ? await components.completion?.(request) ?? [] : await scripts.complete!(request, expression!);
+  const completions = process.argv.includes('--definition-only') ? [] : pageQuery ? schema?.fields ?? [] : dataPath ? await dataPaths.completion!.provide({ ...current }) : route ? await routeFeatures.completion!.provide({ ...current }) : instance ? await instances.completion!.provide(request) : dataset ? await fields.completion!.provide(request) : component ? await components.completion?.(request) ?? [] : await scripts.complete!(request, expression!);
   if (schema) queryFields = schema.fields?.map((field) => ({ name: field.name, type: field.type.display, required: field.required, ...(field.defaultValue === undefined ? {} : { defaultValue: field.defaultValue }) })) ?? [];
   results.push({ query, milliseconds: Math.round((performance.now() - start) * 100) / 100, reads: reads - before, definitions: definitions.length, completions: completions.length });
+  if (process.argv.includes('--open-target')) for (const definition of definitions) {
+    opened.set(definition.uri, (opened.get(definition.uri) ?? 0) + 1);
+    hostRevisions.changed(definition.uri, root);
+  }
 }
 const graph = new ScriptProject(reader, request, options);
 const created = await graph.create(dataset || instance || pageQuery || dataPath || route && !uri.endsWith('.wxml') ? uri : undefined);

@@ -50,6 +50,57 @@ test('无修订端口、已取消请求及不同解析设置不复用旧图', as
   assert.equal(await new ScriptProject(cachedReader, { ...request, cancellation: { isCancellationRequested: true } }, {}).create(), undefined);
 });
 
+test('跳转打开或关闭同内容的目标时复用类型图，只刷新目标文档版本', async () => {
+  const root = 'file:///buffer-cache/';
+  const shared = root + 'shared.ts';
+  const documents = new Map([[root + 'page.ts', `import {title} from './shared';Page({data:{title}});`], [shared, `export const title='甲';`]]);
+  const versions = new Map<string, number>();
+  const reads: string[] = [];
+  let opened = false;
+  const reader: WorkspaceReader = { root: () => root, revision: (uri) => String(versions.get(uri) ?? 0), read: async (uri) => {
+    reads.push(uri);
+    const text = documents.get(uri);
+    return text === undefined ? undefined : { text, ...(uri === shared && opened ? { version: 1 } : {}) };
+  } };
+  const request: LanguageRequest = { document: { uri: root + 'page.wxml', text: '{{title}}', version: 1, languageId: 'wxml' }, offset: 3, cancellation: { isCancellationRequested: false } };
+  const first = await new ScriptProject(reader, request, {}).create();
+  for (const state of [true, false, true]) {
+    opened = state;
+    versions.set(shared, (versions.get(shared) ?? 0) + 1);
+    reads.length = 0;
+    const project = new ScriptProject(reader, request, {});
+    assert.equal((await project.create())!.program, first!.program);
+    assert.deepEqual(reads, [shared]);
+    assert.equal(project.documents.get(shared)?.version, state ? 1 : undefined);
+  }
+  documents.set(shared, `export const title='已修改';`);
+  versions.set(shared, versions.get(shared)! + 1);
+  const edited = await new ScriptProject(reader, request, {}).create();
+  assert.notEqual(edited!.program, first!.program);
+  assert.match(edited!.program.getSourceFile(shared)!.text, /已修改/);
+});
+
+test('缓存复核期间目标再次变化时放弃旧图，重新读取最新源码', async () => {
+  const root = 'file:///cache-race/';
+  const shared = root + 'shared.ts';
+  let text = 'export const count=1;';
+  let revision = 0;
+  let changing = false;
+  const reader: WorkspaceReader = { root: () => root, revision: (uri) => uri === shared ? String(revision) : '0', read: async (uri) => {
+    if (uri === root + 'page.ts') return { text: `import {count} from './shared';Page({data:{count}});` };
+    if (uri !== shared) return undefined;
+    const snapshot = { text };
+    if (changing) { changing = false; text = 'export const count=2;'; revision++; }
+    return snapshot;
+  } };
+  const request: LanguageRequest = { document: { uri: root + 'page.wxml', text: '{{count}}', version: 1, languageId: 'wxml' }, offset: 3, cancellation: { isCancellationRequested: false } };
+  const first = await new ScriptProject(reader, request, {}).create();
+  revision++; changing = true;
+  const next = await new ScriptProject(reader, request, {}).create();
+  assert.notEqual(next!.program, first!.program);
+  assert.match(next!.program.getSourceFile(shared)!.text, /count=2/);
+});
+
 test('目录探测发现循环模块并排除缺失目录，超出文件预算的图不进入缓存', async () => {
   const root = 'file:///directory/';
   const files = new Map([[root + 'page.ts', `import {shared} from './lib/shared';import absent from './missing/entry';Page({data:{shared}});`], [root + 'lib/shared.ts', `export const shared={title:'甲'};`]]);

@@ -7,6 +7,7 @@ import type { Value } from './values';
 import { documentation } from './documentation';
 import { componentEvents, componentFunctions } from './events';
 import { semanticType } from './semantic-types';
+import { directRegistrations, registrationSource } from './direct-definition';
 
 /** 只返回实现源码；类型声明可以参与推断，但不能成为跳转目标。 */
 function location(node: ts.Node, project: ScriptProject): ComponentLocation | undefined {
@@ -213,7 +214,17 @@ function referencedComponents(values: Values, options: Value, path: string): { p
 
 /** 解析组件实现和配置宏，跨文件依赖统一交给脚本语义图。 */
 export function createComponentScriptResolver(reader: WorkspaceReader, options: (uri: string) => ScriptOptions = () => ({})): ComponentScriptResolver {
-  return {
+  const resolver: ComponentScriptResolver = {
+    /** 直接注册无需加载属性、事件和整个导入图；包装器及重导出沿用语义解析。 */
+    async locate(request, uri) {
+      if (request.cancellation.isCancellationRequested || /\.d\.[cm]?ts$/i.test(uri)) return [];
+      const document = await reader.read(uri);
+      if (!document || request.cancellation.isCancellationRequested || document.text.length > 2_000_000) return [];
+      const source = registrationSource(uri, document.text);
+      const definitions = directRegistrations(source).map((node) => ({ uri, range: { start: node.expression.getStart(source), end: node.expression.end }, ...(document.version !== undefined ? { version: document.version } : {}) }));
+      if (request.cancellation.isCancellationRequested) return [];
+      return definitions.length ? definitions : (await resolver.inspect(request, uri))?.definitions ?? [];
+    },
     /** 每次查询建立只读快照，以便未保存的参数和注释立即生效。 */
     async inspect(request: LanguageRequest, uri: string, includeInstance = false): Promise<ComponentScriptInfo | undefined> {
       if (request.cancellation.isCancellationRequested || /\.d\.[cm]?ts$/i.test(uri)) return undefined;
@@ -286,4 +297,5 @@ export function createComponentScriptResolver(reader: WorkspaceReader, options: 
       return { ...(kind ? { kind } : {}), complete: !project.exhausted, dependencies: project.dependencies, registrationComplete: !project.exhausted && registrationComplete, description, definitions, properties: [...props.values()], registrations: paths, events, ...(includeInstance ? { members: [...members.values()], instanceOwners } : {}) };
     },
   };
+  return resolver;
 }

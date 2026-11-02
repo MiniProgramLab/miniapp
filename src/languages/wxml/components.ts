@@ -358,8 +358,8 @@ class ComponentProject {
   }
 
   /** 根据标签注册解析组件；同一请求中的重复父节点共用结果。 */
-  private component(name: string, includeInstance = false): Promise<ComponentInfo | undefined> {
-    const key = `${name}:${includeInstance}`;
+  private component(name: string, includeInstance = false, locationOnly = false): Promise<ComponentInfo | undefined> {
+    const key = `${name}:${includeInstance}:${locationOnly}`;
     let pending = this.components.get(key);
     if (!pending) {
       pending = (async () => {
@@ -373,7 +373,13 @@ class ComponentProject {
           const target = await this.path(registered.path, registered.from);
           if (!target) { this.reader.navigation?.record({ code: 'missing', message: `组件 ${name} 已注册为 ${registered.path}，但未找到实现文件。`, uri: registered.from }); continue; }
           this.reader.navigation?.record({ code: 'path', message: `沿组件 ${name} 的注册 ${registered.path} 定位实现。`, uri: target });
-          const script = /\.wxml$/i.test(target) ? undefined : await this.inspect(target, includeInstance);
+          const script = /\.wxml$/i.test(target) ? undefined : locationOnly && this.scripts.locate
+            ? { definitions: await this.scripts.locate(this.request, target), description: '', properties: [], registrations: {} }
+            : await this.inspect(target, includeInstance);
+          if (locationOnly && script?.definitions.length) {
+            implementations.push({ ...script, slots: [] });
+            continue;
+          }
           let template = target.replace(/\.(?:[cm]?[jt]sx?|wxml)$/i, '.wxml');
           let document = await this.reader.read(template);
           // 纯重导出入口可能没有模板，应跟随真实组件实现的同名 WXML。
@@ -382,7 +388,7 @@ class ComponentProject {
             const content = await this.reader.read(candidate);
             if (content) { template = candidate; document = content; break; }
           }
-          const slots = await this.slots(template);
+          const slots = locationOnly ? [] : await this.slots(template);
           const firstTag = document && scanTags(document.text).next().value;
           const fallback: ComponentLocation[] = firstTag ? [{ uri: template, range: firstTag.nameRange, ...(document?.version !== undefined ? { version: document.version } : {}) }] : [];
           implementations.push({ ...script, description: script?.description || (document && firstTag ? leadingComment(document.text, firstTag.start) : ''),
@@ -444,12 +450,12 @@ class ComponentProject {
   }
 
   /** 标签和参数读取自身组件；slot 属性读取最近的所属组件。 */
-  async target(): Promise<ComponentTarget | undefined> {
+  async target(locationOnly = false): Promise<ComponentTarget | undefined> {
     const { document, offset } = this.request;
     const tag = tagAt(document.text, offset);
     if (!tag || this.request.cancellation.isCancellationRequested) return undefined;
     if (contains(tag.nameRange, offset)) {
-      const component = await this.component(tag.name);
+      const component = await this.component(tag.name, false, locationOnly);
       return component ? { title: `<${tag.name}>`, description: [component.description, component.slots.length ? `插槽：${[...new Set(component.slots.map((slot) => slot.name || '默认'))].join('、')}` : ''].filter(Boolean).join('\n'), range: tag.nameRange, definitions: component.definitions } : undefined;
     }
     if (tag.closing) return undefined;
@@ -538,8 +544,8 @@ export function createComponentResolver(reader: WorkspaceReader, scripts: (reade
     return new ComponentProject(reader, scripts, request, options(request.document.uri));
   };
   /** 每次提供器请求独立解析，避免引用未保存之前的结果。 */
-  const target = (request: LanguageRequest): Promise<ComponentTarget | undefined> => {
-    return project(request)?.target() ?? Promise.resolve(undefined);
+  const target = (request: LanguageRequest, locationOnly = false): Promise<ComponentTarget | undefined> => {
+    return project(request)?.target(locationOnly) ?? Promise.resolve(undefined);
   };
   return {
     /** 迁移和源码导航共享实际注册表。 */
@@ -558,7 +564,7 @@ export function createComponentResolver(reader: WorkspaceReader, scripts: (reade
     },
     /** 将目标实现位置补上使用处的原始范围。 */
     async definition(request): Promise<readonly Definition[]> {
-      const result = await target(request);
+      const result = await target(request, true);
       const definitions = result && !request.cancellation.isCancellationRequested ? result.definitions.map((definition) => ({ ...definition, originRange: result.range })) : [];
       return [...new Map(definitions.map((definition) => [`${definition.uri}:${definition.range.start}:${definition.range.end}`, definition])).values()];
     },

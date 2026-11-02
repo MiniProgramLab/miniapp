@@ -51,6 +51,29 @@ test('组件标签和结束标签跳到注册实现，并显示组件注释', as
   }
 });
 
+test('直接注册的组件标签跳转不加载业务导入或模板，悬浮仍读取完整语义', async () => {
+  const context = fixture('<my-ca|rd/>', { ...component,
+    'src/components/card/index.ts': `import {title} from './heavy';/** 展示卡片 */ Component({properties:{title:{type:String,value:title}}});`,
+    'src/components/card/heavy.ts': `export const title='默认标题';`,
+  });
+  assert.deepEqual(await context.definitions(), [{ path: 'src/components/card/index.ts', text: 'Component', origin: 'my-card', version: 7 }]);
+  assert.ok(!context.reads.includes('file:///workspace/src/components/card/heavy.ts'));
+  assert.ok(!context.reads.includes('file:///workspace/src/components/card/index.wxml'));
+  assert.match((await context.hover())!.description, /展示卡片/);
+  assert.ok(context.reads.includes('file:///workspace/src/components/card/heavy.ts'));
+  assert.match((await context.hover())!.description, /插槽/);
+});
+
+test('组件标签的导入别名及 CommonJS 转译调用保持原注册位置', async () => {
+  for (const [source, target] of [
+    [`import {Component as register} from './runtime';register({});`, 'register'],
+    [`var runtime=require('./runtime');(0,runtime.VantComponent)({});`, '(0,runtime.VantComponent)'],
+  ]) {
+    const context = fixture('<my-ca|rd/>', { ...component, 'src/components/card/index.ts': source! });
+    assert.equal((await context.definitions())[0]?.text, target);
+  }
+});
+
 test('参数显示注释、类型和显式默认值，跳到实现的字段而非类型', async () => {
   const context = fixture('<my-card title-te|xt="标题"/>', component);
   assert.deepEqual(await context.definitions(), [{ path: 'src/components/card/index.ts', text: 'titleText', origin: 'title-text', version: 7 }]);
