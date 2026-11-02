@@ -64,6 +64,7 @@
     "dev:test:host": "pnpm dev:check && node scripts/test-host.mjs",
     "dev:package": "pnpm dev:check && node scripts/package.mjs",
     "dev:release:check": "node scripts/check-release.mjs",
+    "dev:changelog": "node scripts/update-changelog.mjs",
     "dev:cursor": "pnpm dev:package && node scripts/install-cursor.mjs",
     "vscode:prepublish": "pnpm dev:check"
   },

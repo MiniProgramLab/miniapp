@@ -4,7 +4,7 @@ on:
   push:
     tags: ['v*']
 
-# 默认只读仓库；只有发布任务可以申请短期 OIDC 凭据。
+# 默认只读仓库；日志回写单独授权，市场发布使用短期 OIDC 凭据。
 permissions:
   contents: read
 
@@ -23,6 +23,7 @@ jobs:
       - name: 获取源码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: 安装 pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -34,6 +35,10 @@ jobs:
       - name: 校验扩展标识与 tag 版本
         id: manifest
         run: pnpm dev:release:check
+      - name: 按版本历史生成安装包变更日志
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: pnpm dev:changelog --tag "$RELEASE_TAG"
       - name: 按锁文件安装依赖
         run: pnpm install --frozen-lockfile
       - name: 检查架构图是否同步
@@ -50,6 +55,52 @@ jobs:
           path: dist/miniapp-${{ steps.manifest.outputs.version }}.vsix
           if-no-files-found: error
           retention-days: 30
+
+  changelog:
+    name: 回写版本变更日志
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    # 所有版本串行回写，只更新当前 tag 的记录，保留已有版本说明。
+    concurrency:
+      group: miniapp-changelog
+      cancel-in-progress: false
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: 获取默认分支及全部 tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+      - name: 安装 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: 生成日志并提交默认分支
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3; do
+            git fetch --tags origin "refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+            git switch -C changelog-record "refs/remotes/origin/$DEFAULT_BRANCH"
+            node scripts/update-changelog.mjs --tag "$RELEASE_TAG"
+            git add -- CHANGELOG.md
+            if git diff --cached --quiet; then
+              echo '变更日志已是最新，无需重复提交。'
+              exit 0
+            fi
+            git commit -m "chore: 更新变更日志至 $RELEASE_TAG"
+            if git push origin "HEAD:refs/heads/$DEFAULT_BRANCH"; then
+              exit 0
+            fi
+          done
+          echo '::error::变更日志回写失败，请检查默认分支写入权限或并发更新后重跑日志任务。'
+          exit 1
 
   publish:
     name: 发布到 ${{ matrix.marketplace }}
