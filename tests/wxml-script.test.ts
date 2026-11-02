@@ -57,6 +57,73 @@ test('本地字面量、断言对象和方法直接定位，跳转不读取无�
   }
 });
 
+test('跨文件变量按别名及重导出读取目标链，不展开方法体和旁支依赖', async () => {
+  const files = {
+    ...chain,
+    'index.ts': `import unrelated from './heavy';${chain['index.ts']}`,
+    'original.ts': `import unused from './heavy';${chain['original.ts']}`,
+    'heavy.ts': `import deep from './deep';export default ()=>deep();`,
+    'deep.ts': 'export default ()=>1;',
+  };
+  for (const [template, target] of [['{{cap|tion}}', 'title'], ['{{Sta|tus}}', 'State'], ['<view bindtap="onT|ap"/>', 'execute']]) {
+    const graph = fixture(template!, files);
+    assert.deepEqual(await graph.targets(), [`original.ts:${target}`]);
+    assert.ok(!graph.reads.some((uri) => /\/(?:heavy|deep)\.ts$/.test(uri)));
+    assert.equal((await graph.definitions())[0]!.version, 3);
+  }
+});
+
+test('Behavior 首跳按覆盖顺序读取无参工厂和继承链，略过无关方法依赖', async () => {
+  const files = {
+    'index.ts': `import unused from './heavy';import earlier from './earlier';import {build as create} from './barrel';Component({behaviors:[earlier,create()]});`,
+    'barrel.ts': `export {default as build} from './factory';`,
+    'factory.ts': `import nested from './nested';export default ()=>{const config={};return Behavior({behaviors:[nested],methods:{own(){}}});};`,
+    'nested.ts': `import helper from './heavy';export default Behavior({methods:{/** 提交 */ submit(){helper();}}});`,
+    'earlier.ts': `import heavy from './heavy';export default Behavior({methods:{submit(){heavy();}}});`,
+    'heavy.ts': `export default ()=>{};`,
+  };
+  const graph = fixture('<view bindtap="sub|mit"/>', files);
+  assert.deepEqual(await graph.targets(), ['nested.ts:submit']);
+  assert.ok(!graph.reads.some((uri) => /\/(?:earlier|heavy)\.ts$/.test(uri)));
+  assert.equal((await graph.hover())?.description, '提交');
+  const shadowed = fixture('<view bindtap="sub|mit"/>', { ...files, 'index.ts': `import nested from './nested';Component({behaviors:[nested],data:{submit:'本页字段'}});` });
+  assert.deepEqual(await shadowed.targets(), ['index.ts:submit']);
+});
+
+test('动态继承分支、工厂局部绑定和显式配置类型不被按需路径误判', async () => {
+  const dynamic = fixture('<view bindtap="ru|n"/>', {
+    'index.ts': `import a from './a';import b from './b';import c from './c';Component({behaviors:[a,flag?b:c]});`,
+    'a.ts': `export default Behavior({methods:{run(){}}});`,
+    'b.ts': `export default Behavior({methods:{run(){}}});`,
+    'c.ts': `export default Behavior({methods:{run(){}}});`,
+  });
+  assert.deepEqual(await dynamic.targets(), ['b.ts:run', 'c.ts:run']);
+  const local = fixture('<view bindtap="ru|n"/>', {
+    'index.ts': `import build from './factory';Component({behaviors:[build()]});`,
+    'factory.ts': `import {run} from './other';export default ()=>{const run=()=>{};return Behavior({methods:{run}});};`,
+    'other.ts': `export function run(){}`,
+  });
+  assert.deepEqual(await local.targets(), ['factory.ts:run']);
+  for (const script of [
+    `const config:{data:{visible:boolean}}={data:{visible:true,hidden:true}};Page(config);`,
+    `Page(({data:{visible:true,hidden:true}} as {data:{visible:boolean}}));`,
+  ]) assert.deepEqual(await fixture('{{hid|den}}', { 'index.ts': script }).targets(), []);
+  assert.deepEqual(await fixture('{{tar|get}}', { 'index.ts': `const config={hidden:true,visible:true} as {visible:boolean};Page({data:{target:config.hidden}});` }).targets(), []);
+});
+
+test('跨文件声明草稿变化、缺失模块创建和目标版本在每次首跳重新核对', async () => {
+  const graph = fixture('{{cap|tion}}', { 'index.ts': `import {label} from './source';Page({data:{caption:label}});` });
+  assert.deepEqual(await graph.targets(), []);
+  graph.documents.set('file:///workspace/source.ts', `export const label='新建';`);
+  assert.deepEqual(await graph.targets(), ['source.ts:label']);
+  const before = (await graph.definitions())[0]!;
+  graph.documents.set('file:///workspace/source.ts', `/** 新增注释改变位置 */\nexport const label='草稿';`);
+  const after = (await graph.definitions())[0]!;
+  assert.ok(after.range.start > before.range.start);
+  assert.equal(after.version, 3);
+  assert.deepEqual(await graph.targets(), ['source.ts:label']);
+});
+
 test('动态展开、脚本别名和类型限定的数据对象仍沿完整语义确认来源', async () => {
   const files = { 'source.ts': 'export const title="原始标题";' };
   for (const script of [

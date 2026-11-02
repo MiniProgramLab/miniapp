@@ -822,7 +822,7 @@
         "目录：src/languages/typescript",
         "公开导出：createComponentScriptResolver、createDataPathPlugin、createScriptNavigationPlugin、createScriptResolver、createWxsPlugin",
         "声明能力：补全、定义跳转、diagnostics、highlights、悬浮、references、rename、signatureHelp",
-        "依赖契约：CallSignature、CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentLocation、ComponentMember、ComponentProperty、ComponentScriptInfo、ComponentScriptResolver、DatasetAccess、Definition、Diagnostic、EventForwarding、ExpressionInfo、HandlerSignature、Hover、InstanceAccess、LanguageFeatures、LanguagePlugin、LanguageRequest、PageQuery、ProjectFileResolver、RouteAccess、RouteManifest、ScriptAdapter、ScriptDefinitionResolver、ScriptModule、SemanticType、StaticString、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
+        "依赖契约：CallSignature、CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentLocation、ComponentMember、ComponentProperty、ComponentScriptInfo、ComponentScriptResolver、DatasetAccess、Definition、Diagnostic、EventForwarding、ExpressionInfo、HandlerSignature、Hover、InstanceAccess、LanguageFeatures、LanguagePlugin、LanguageRequest、NavigationStep、PageQuery、ProjectFileResolver、RouteAccess、RouteManifest、ScriptAdapter、ScriptDefinitionResolver、ScriptModule、SemanticType、StaticString、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
         "语言资源：grammars: wxs",
         "语言资源：languages: wxs"
       ]

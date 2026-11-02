@@ -62,6 +62,8 @@ export class ScriptProject {
   private readonly root: string;
   private bytes = 0;
   private options: ts.CompilerOptions = {};
+  /** 按需导航只读取模块路径配置，不建立完整脚本图。 */
+  private navigationConfigured = false;
   private program: { program: ts.Program; entry: ts.SourceFile } | undefined;
   private built = false;
   private readonly files: ProjectFileResolver | undefined;
@@ -236,7 +238,7 @@ export class ScriptProject {
   }
 
   /** 使用官方解析器处理相对路径、路径映射、目录入口和包声明。 */
-  private async resolve(reference: string, from: string): Promise<string | undefined> {
+  private async resolve(reference: string, from: string, ambient = true): Promise<string | undefined> {
     // WXS 和显式 JSON 引用只读取静态文件，保留源模块身份及类型检查器。
     if (/\.(?:wxs|json)$/i.test(reference)) {
       const candidates = [...await this.files?.candidates(reference, from, 'file') ?? [], new URL(reference, from).href];
@@ -267,7 +269,7 @@ export class ScriptProject {
       if (resolved) { result = resolved; break; }
     }
     if (!result) {
-      if (!reference.startsWith('.') && !reference.startsWith('/') && this.reader.findFiles) {
+      if (ambient && !reference.startsWith('.') && !reference.startsWith('/') && this.reader.findFiles) {
         if (!this.ambientModules) {
           this.ambientModules = new Map();
           if (this.reader.revision) this.revisions.set(this.root, this.reader.revision(this.root));
@@ -290,6 +292,20 @@ export class ScriptProject {
     this.resolutions.set(`${from}\0${reference}`, { ...result, resolvedFileName });
     return resolvedFileName;
   }
+
+  /** 明确引用链复用官方路径解析，缺失模块交回完整语义处理。 */
+  async navigationModule(reference: string, from: string): Promise<string | undefined> {
+    if (!this.navigationConfigured) {
+      await this.configure(from);
+      this.navigationConfigured = true;
+    }
+    const target = await this.resolve(reference, from, false);
+    if (target) this.explain({ code: 'path', message: `沿导入 ${reference} 按需定位模块。`, uri: target });
+    return this.exhausted || this.cancelled ? undefined : target;
+  }
+
+  /** 按需查询与完整图共享请求快照，回退时不重复读取同一文件。 */
+  navigationSource(uri: string): Promise<WorkspaceText | undefined> { return this.read(uri); }
 
   /** 优先按层级加载项目源码，再读取包依赖，避免声明包耗尽页面解析预算。 */
   private async load(uri: string): Promise<void> {

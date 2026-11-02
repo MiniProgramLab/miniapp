@@ -24,11 +24,13 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
   async function definitions(request: LanguageRequest, expression: TemplateExpression, hover = false, rename = false): Promise<readonly ScriptDefinition[]> {
     const wxs = await queryWxs(reader, request, expression, options(request.document.uri), rename);
     if (wxs) return wxs.definitions;
+    const projects = new Map<string, ScriptProject>();
     if (!hover && !rename && !options(request.document.uri).adapters?.length) {
-      const direct = await directTemplateDefinition(reader, request, expression);
+      const project = new ScriptProject(reader, request, options(request.document.uri));
+      projects.set(request.document.uri, project);
+      const direct = await directTemplateDefinition(reader, request, expression, options(request.document.uri), project);
       if (direct) return direct;
     }
-    const projects = new Map<string, ScriptProject>();
     const result = new Map<string, ScriptDefinition>();
     const contexts = expression.contexts?.length ? expression.contexts : [{ uri: request.document.uri, scopes: undefined }];
     for (const context of contexts) {

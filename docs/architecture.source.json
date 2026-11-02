@@ -346,6 +346,7 @@
         "LanguageFeatures",
         "LanguagePlugin",
         "LanguageRequest",
+        "NavigationStep",
         "PageQuery",
         "ProjectFileResolver",
         "RouteAccess",
