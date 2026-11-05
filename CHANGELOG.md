@@ -2,6 +2,12 @@
 
 发版时根据当前 tag 与之前正式版本之间的提交记录，按当前发布版本号分类记录变更，并保留历史版本说明。
 
+## [0.0.4](https://github.com/MiniProgramLab/miniapp/compare/v0.0.3...v0.0.4) - 2026-11-05
+
+### 问题修复
+
+- 修复各语言注释格式并发布 0.0.4 版本（[bd4dc96](https://github.com/MiniProgramLab/miniapp/commit/bd4dc96d7ea72c2ee64a22004e49561c10dec08a)）
+
 ## [0.0.3](https://github.com/MiniProgramLab/miniapp/compare/v0.0.2...v0.0.3) - 2026-11-02
 
 ### 新增功能
