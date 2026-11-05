@@ -41,6 +41,7 @@ exports.run = async function run() {
 
   await require('./tag-editing-host.cjs').run();
   await require('./highlighting-host.cjs').run();
+  await require('./comments-host.cjs').run();
   await require('./structure-host.cjs').run();
   assert.equal(require.cache[compiler], undefined, '基本 WXML 编辑和高亮不应初始化 TypeScript');
   await require('./components-host.cjs').run(extension);

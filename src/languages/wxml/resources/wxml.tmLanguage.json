@@ -38,7 +38,7 @@
           "include": "source.ts"
         }
       ],
-      "comment": "复用 TypeScript 的表达式高亮，函数调用沿用当前主题的 TS 函数作用域。"
+      "comment": "仅复用 TypeScript 的表达式高亮，注释仍使用 WXML 的 HTML 形式。"
     },
     "tag": {
       "name": "meta.tag.wxml",

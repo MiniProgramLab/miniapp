@@ -2,7 +2,7 @@
   "name": "miniapp",
   "displayName": "miniapp",
   "description": "小程序语言工具，支持 WXML 与 WXS 语义、自定义事件契约、跨文件重命名，以及脚本和样式源码导航。",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "miniprogramlab",
   "icon": "media/icon.png",
   "private": true,
@@ -126,10 +126,7 @@
       {
         "language": "wxml",
         "scopeName": "text.html.wxml",
-        "path": "./src/languages/wxml/resources/wxml.tmLanguage.json",
-        "embeddedLanguages": {
-          "source.ts.embedded.wxml": "typescript"
-        }
+        "path": "./src/languages/wxml/resources/wxml.tmLanguage.json"
       },
       {
         "language": "wxss",
