@@ -2,6 +2,14 @@
 
 发版时根据当前 tag 与之前正式版本之间的提交记录，按当前发布版本号分类记录变更，并保留历史版本说明。
 
+## [0.0.5](https://github.com/MiniProgramLab/miniapp/compare/v0.0.4...v0.0.5) - 2026-11-06
+
+### 性能优化
+
+- 优化补全悬浮跳转与后台解析性能（[00aa371](https://github.com/MiniProgramLab/miniapp/commit/00aa37119701ad66c9efd442f303faa5138026f9)）
+- 优化语义查询冷启动与线程计算性能（[e8ba98c](https://github.com/MiniProgramLab/miniapp/commit/e8ba98ce9cd370126f399ce71f291f725fc2e144)）
+- 优化复杂类型查询并发布 0.0.5 版本（[a2be45f](https://github.com/MiniProgramLab/miniapp/commit/a2be45f52f4107fe18611245fcf4203b3901dcf0)）
+
 ## [0.0.4](https://github.com/MiniProgramLab/miniapp/compare/v0.0.3...v0.0.4) - 2026-11-05
 
 ### 问题修复
