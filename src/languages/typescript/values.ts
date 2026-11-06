@@ -493,6 +493,15 @@ export class Values {
     for (const resolved of this.resolve(value, seen)) {
       if (resolved.items) { result.push(...resolved.items); continue; }
       if (resolved.template || resolved.members || ts.isSourceFile(resolved.node)) continue;
+      // 无显式类型的 TS 数组直接读取元素，避免为 Behavior 列表推导整组类型。
+      if (!resolved.type && !resolved.runtimeType && ts.isArrayLiteralExpression(resolved.node) && /\.[cm]?tsx?$/i.test(resolved.node.getSourceFile().fileName)
+        && resolved.node.elements.some((item) => !ts.isSpreadElement(item))) {
+        for (const item of resolved.node.elements) {
+          if (ts.isSpreadElement(item)) result.push(...this.elements({ node: item.expression, bindings: resolved.bindings }, new Set(seen).add(resolved.node)));
+          else result.push({ node: item, bindings: resolved.bindings });
+        }
+        continue;
+      }
       const type = resolved.runtimeType ?? resolved.type ?? this.checker.getTypeAtLocation(resolved.node);
       const element = this.checker.getIndexTypeOfType(type, ts.IndexKind.Number);
       if (resolved.runtimeType) {

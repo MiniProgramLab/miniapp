@@ -268,7 +268,7 @@ svg[data-theme="dark"] {
         <rect x="250" y="536" width="556" height="100" rx="0" class="c-mask"/>
         <rect x="250" y="536" width="556" height="100" rx="0" class="c-cloud" stroke-width="1.5"/>
         <text x="528" y="584" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">公共 API 与能力契约</text>
-        <text x="528" y="600" class="t-muted" font-size="13" text-anchor="middle">75 个公开导出</text>
+        <text x="528" y="600" class="t-muted" font-size="13" text-anchor="middle">77 个公开导出</text>
         <text x="528" y="628" class="t-cloud" font-size="11" text-anchor="middle">src/api</text>
 
         <rect x="842" y="536" width="556" height="100" rx="0" class="c-mask"/>

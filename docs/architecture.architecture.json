@@ -82,7 +82,7 @@
         556,
         100
       ],
-      "sublabel": "75 个公开导出",
+      "sublabel": "77 个公开导出",
       "tag": "src/api"
     },
     {
@@ -1268,7 +1268,7 @@
       "items": [
         "目录：src/adapters/vscode",
         "公开导出：WorkspaceCheckFilters、applyRefactorEdit、createDependencyTracking、createLanguageHost、createWorkspaceReader、formatCheckReport、formatNavigationReport、registerFileOperations、registerNavigationExplanation、registerWorkspaceCheck、toWorkspaceEdit",
-        "依赖契约：CheckFile、CheckFinding、CheckProvider、CheckReport、CheckResult、CodeAction、Completion、Definition、Diagnostic、Disposable、LanguageFeatures、LanguageHost、LanguageRequest、LanguageResult、Logger、NavigationReport、NavigationStep、NavigationTracking、OutlineSymbol、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText"
+        "依赖契约：CheckFile、CheckFinding、CheckProvider、CheckReport、CheckResult、CodeAction、Completion、Definition、Diagnostic、Disposable、LanguageFeatures、LanguageHost、LanguageRequest、LanguageResult、Logger、NavigationReport、NavigationStep、NavigationTracking、OutlineSymbol、TextEdit、TextRange、WorkspaceDependency、WorkspaceDirectoryEntry、WorkspaceReader、WorkspaceText"
       ]
     },
     {
@@ -1277,7 +1277,7 @@
       "items": [
         "目录：src/adapters/worker",
         "公开导出：ComputeHost、ComputeTransport、Computed、WorkerFileSnapshot、createMessageBatch、createWorkerFileCache",
-        "依赖契约：Cancellation、LanguageRequest、LanguageResult、Logger、WorkspaceDependency、WorkspaceReader"
+        "依赖契约：Cancellation、LanguageRequest、LanguageResult、Logger、WorkspaceDependency、WorkspaceDirectoryEntry、WorkspacePathSnapshot、WorkspaceReader"
       ]
     },
     {
@@ -1285,7 +1285,7 @@
       "title": "公共 API 与能力契约 · 9 个源文件",
       "items": [
         "目录：src/api",
-        "公开导出：CallSignature、Cancellation、CheckFile、CheckFinding、CheckIssue、CheckOptions、CheckProvider、CheckReport、CheckResult、CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentInspection、ComponentLocation、ComponentMember、ComponentProperty、ComponentResolver、ComponentScriptInfo、ComponentScriptResolver、ComponentUsages、DatasetAccess、Definition、Diagnostic、Disposable、DocumentSnapshot、EventForwarding、ExpressionInfo、FileReference、FileReferenceKind、FoldingRegion、HandlerSignature、Hover、InstanceAccess、LanguageFeatures、LanguageHost、LanguagePlugin、LanguageRequest、LanguageResult、LinkedEditing、Logger、MiniAppApi、NavigationReport、NavigationStep、NavigationTracking、OutlineSymbol、PageQuery、PluginContext、PluginInfo、ProjectFileResolver、Reference、RenameTarget、ResourceScope、RouteAccess、RouteContextResolver、RouteDocumentResolver、RouteManifest、RouteResolver、RouteResult、ScriptAdapter、ScriptDefinitionResolver、ScriptModule、ScriptSettings、SemanticType、StaticString、StyleClassResolver、TemplateBinding、TemplateContext、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
+        "公开导出：CallSignature、Cancellation、CheckFile、CheckFinding、CheckIssue、CheckOptions、CheckProvider、CheckReport、CheckResult、CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentInspection、ComponentLocation、ComponentMember、ComponentProperty、ComponentResolver、ComponentScriptInfo、ComponentScriptResolver、ComponentUsages、DatasetAccess、Definition、Diagnostic、Disposable、DocumentSnapshot、EventForwarding、ExpressionInfo、FileReference、FileReferenceKind、FoldingRegion、HandlerSignature、Hover、InstanceAccess、LanguageFeatures、LanguageHost、LanguagePlugin、LanguageRequest、LanguageResult、LinkedEditing、Logger、MiniAppApi、NavigationReport、NavigationStep、NavigationTracking、OutlineSymbol、PageQuery、PluginContext、PluginInfo、ProjectFileResolver、Reference、RenameTarget、ResourceScope、RouteAccess、RouteContextResolver、RouteDocumentResolver、RouteManifest、RouteResolver、RouteResult、ScriptAdapter、ScriptDefinitionResolver、ScriptModule、ScriptSettings、SemanticType、StaticString、StyleClassResolver、TemplateBinding、TemplateContext、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceDirectoryEntry、WorkspacePathSnapshot、WorkspaceReader、WorkspaceText",
         "依赖契约：CallSignature、Cancellation、CodeAction、Completion、DatasetAccess、Definition、Diagnostic、ExpressionInfo、FoldingRegion、HandlerSignature、Hover、InstanceAccess、LanguageRequest、LanguageResult、OutlineSymbol、ProjectFileResolver、Reference、RenameTarget、RouteAccess、RouteManifest、ScriptDefinitionResolver、ScriptModule、SemanticType、StaticString、TextEdit、TextRange、WorkspaceDependency、WorkspaceText"
       ]
     },

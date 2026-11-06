@@ -22,7 +22,7 @@ export interface ComputeReply {
   unobserved: readonly string[];
 }
 /** 文件系统仍由宿主读取，工作线程兼容远程和虚拟工作区。 */
-export interface ComputeRead { kind: 'read'; id: number; job: number; method: 'read' | 'directory' | 'findFiles'; args: unknown[] }
+export interface ComputeRead { kind: 'read'; id: number; job: number; method: 'read' | 'directory' | 'entries' | 'findFiles'; args: unknown[] }
 /** 单次异步文件响应不覆盖其他调用者已观察到的旧修订。 */
 export interface ComputeReadReply { kind: 'read-result'; id: number; value?: unknown; error?: string; dependencies: readonly WorkspaceDependency[]; stale: boolean }
 /** 配置和工作区变化清除线程内缓存，文件事件更新对应修订。 */

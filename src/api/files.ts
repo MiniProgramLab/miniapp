@@ -1,6 +1,18 @@
 /** 不同语言共享项目路径规则，具体扩展名仍由语言模块决定。 */
 export type FileReferenceKind = 'component' | 'script' | 'style' | 'file';
 
+/** 完整目录清单保留未知类型，符号链接继续按原路径核对。 */
+export interface WorkspaceDirectoryEntry {
+  readonly name: string;
+  readonly kind: 'file' | 'directory' | 'unknown';
+}
+
+/** 已缓存的路径结论携带原修订，未知路径继续异步读取。 */
+export interface WorkspacePathSnapshot {
+  readonly kind: 'file' | 'directory' | 'missing';
+  readonly dependencies: readonly import('./index').WorkspaceDependency[];
+}
+
 /** 路径引用保留原始文本位置；扩展名由所属语言声明。 */
 export interface FileReference {
   readonly reference: string;

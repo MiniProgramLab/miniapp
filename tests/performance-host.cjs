@@ -65,6 +65,18 @@ exports.run = async function run() {
     const first = await locate();
     assert.ok(first.some((item) => (item.targetUri ?? item.uri).fsPath === path.join(directory, 'model.ts')));
     assert.deepEqual(await locate(), first);
+    // 已缓存的缺失路径在新模块草稿出现后立即刷新，不等待磁盘监听。
+    await fs.mkdir(path.join(directory, 'drafts'));
+    await fs.writeFile(path.join(directory, 'draft.ts'), `import type {Model} from './drafts/model';Page({data:{record:{} as Model}});`);
+    await fs.writeFile(path.join(directory, 'draft.wxml'), '{{record.}}');
+    const draft = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(directory, 'draft.wxml')));
+    const completeDraft = () => vscode.commands.executeCommand('vscode.executeCompletionItemProvider', draft.uri, draft.positionAt(9));
+    assert.ok(!(await completeDraft()).items.some((item) => item.label === 'fromDraft'));
+    const target = vscode.Uri.file(path.join(directory, 'drafts/model.ts'));
+    const create = new vscode.WorkspaceEdit(); create.createFile(target); create.insert(target, new vscode.Position(0, 0), 'export interface Model {/** 草稿模块 */fromDraft:string}');
+    assert.equal(await vscode.workspace.applyEdit(create), true);
+    assert.ok((await vscode.workspace.openTextDocument(target)).isDirty);
+    assert.ok((await completeDraft()).items.some((item) => item.label === 'fromDraft'));
     const position = document.positionAt(5);
     const [hovers, completions, definitions] = await Promise.all([
       vscode.commands.executeCommand('vscode.executeHoverProvider', document.uri, position),

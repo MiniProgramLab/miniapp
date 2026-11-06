@@ -19,6 +19,15 @@ function fixture(input: Record<string, string>, events = false) {
     ...(events ? { onDidChange: (listener: Parameters<NonNullable<WorkspaceReader['onDidChange']>>[0]) => { listeners.add(listener); return { dispose: () => { listeners.delete(listener); } }; } } : {}),
     read: async (uri) => { tracking.observe(uri); const text = documents.get(uri); return text === undefined ? undefined : { text, version }; },
     directory: async (uri) => [...documents.keys()].some((name) => name.startsWith(uri.replace(/\/?$/, '/'))),
+    entries: async (uri) => {
+      const prefix = uri.replace(/\/?$/, '/'), entries = new Map<string, import('../src/api').WorkspaceDirectoryEntry>();
+      for (const file of documents.keys()) if (file.startsWith(prefix)) {
+        const relative = file.slice(prefix.length), separator = relative.indexOf('/');
+        const name = separator < 0 ? relative : relative.slice(0, separator);
+        entries.set(decodeURIComponent(name), { name: decodeURIComponent(name), kind: separator < 0 ? 'file' : 'directory' });
+      }
+      return entries.size ? [...entries.values()] : undefined;
+    },
     findFiles: async (_uri, pattern, limit, scope) => [...documents.keys()].filter((uri) => uri.startsWith(scope?.root ?? root) && (pattern.includes('d.ts') ? uri.endsWith('.d.ts') : uri.endsWith('.wxml'))).slice(0, limit),
   };
   const reader: WorkspaceReader = { ...source, fileResolver: (uri, cancellation) => createProjectFileResolver(source, uri, cancellation) };

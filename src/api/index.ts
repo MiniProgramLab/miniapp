@@ -1,4 +1,4 @@
-export type { FileReference, FileReferenceKind, ProjectFileResolver } from './files';
+export type { FileReference, FileReferenceKind, ProjectFileResolver, WorkspaceDirectoryEntry, WorkspacePathSnapshot } from './files';
 export type { NavigationStep, NavigationTracking, NavigationReport } from './navigation';
 export type { CheckProvider, CheckFile, CheckFinding, CheckIssue, CheckReport, CheckOptions, CheckResult } from './checks';
 export type { OutlineSymbol, FoldingRegion } from './structure';
@@ -132,6 +132,10 @@ export interface WorkspaceReader {
   revision?(uri: string): string;
   /** 可选的目录探测减少模块解析的无效文件读取，目录内容变化也应更新修订标识。 */
   directory?(uri: string): Promise<boolean>;
+  /** 返回完整目录清单；无法可靠枚举时返回 undefined，继续逐路径探测。 */
+  entries?(uri: string): Promise<readonly import('./files').WorkspaceDirectoryEntry[] | undefined>;
+  /** 同步使用已核验的路径元数据，返回 undefined 表示仍需异步探测。 */
+  lookup?(uri: string): import('./files').WorkspacePathSnapshot | undefined;
   /** 为一次语言查询创建独立的项目配置解析器，兼容未实现此能力的外部宿主。 */
   readonly fileResolver?: (uri: string, cancellation?: Cancellation) => ProjectFileResolver;
   /** 优先读取打开的缓冲区，不存在的文件返回空值。 */

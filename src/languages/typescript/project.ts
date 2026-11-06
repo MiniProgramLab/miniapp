@@ -12,8 +12,16 @@ function directory(uri: string): string {
 }
 
 /** 统一编译器路径与编辑器 URI 的空格编码。 */
+const canonicalPaths = new Map<string, string>();
+/** 纯路径转换有界复用，文件修订仍由每次查询核对。 */
 function canonical(uri: string): string {
-  try { return new URL(uri).toString(); } catch { return uri; }
+  const cached = canonicalPaths.get(uri);
+  if (cached !== undefined) return cached;
+  let result = uri;
+  try { result = new URL(uri).toString(); } catch { /* 非标准路径保留原值。 */ }
+  canonicalPaths.set(uri, result);
+  if (canonicalPaths.size > 8192) canonicalPaths.delete(canonicalPaths.keys().next().value!);
+  return result;
 }
 
 /** 将源码 URI 转成相对模块引用，继续交由 TypeScript 处理扩展名与目录入口。 */
@@ -58,6 +66,36 @@ interface CachedModule {
 }
 const moduleCaches = new WeakMap<NonNullable<WorkspaceReader['revision']>, { entries: Map<string, CachedModule>; dependencies: number }>();
 
+/** 导入元数据与类型绑定无关，可在不同页面之间按原文复用。 */
+interface CachedImports { readonly text: string; readonly info: ts.PreProcessedFileInfo; readonly weight: number }
+const importCaches = new WeakMap<NonNullable<WorkspaceReader['revision']>, { entries: Map<string, CachedImports>; weight: number }>();
+
+/** 复用官方扫描结果，缓存不保留会被类型检查器修改的节点。 */
+function preprocess(source: ts.SourceFile, revision: WorkspaceReader['revision']): ts.PreProcessedFileInfo {
+  const state = revision && importCaches.get(revision);
+  const cached = state?.entries.get(source.fileName);
+  if (cached?.text === source.text) {
+    state!.entries.delete(source.fileName); state!.entries.set(source.fileName, cached);
+    return cached.info;
+  }
+  const info = ts.preProcessFile(source.text, true, true);
+  if (revision) {
+    const references = [...info.importedFiles, ...info.referencedFiles, ...info.typeReferenceDirectives, ...info.libReferenceDirectives];
+    const weight = source.text.length + references.reduce((size, item) => size + item.fileName.length + 48, 0);
+    const current = state ?? { entries: new Map<string, CachedImports>(), weight: 0 };
+    if (weight <= 8_000_000) {
+      current.weight += weight - (current.entries.get(source.fileName)?.weight ?? 0);
+      current.entries.delete(source.fileName); current.entries.set(source.fileName, { text: source.text, info, weight });
+      while (current.entries.size > 1024 || current.weight > 8_000_000) {
+        const oldest = current.entries.keys().next().value!;
+        current.weight -= current.entries.get(oldest)!.weight; current.entries.delete(oldest);
+      }
+      importCaches.set(revision, current);
+    }
+  }
+  return info;
+}
+
 /** 只读脚本图将异步文件端口转换为 TypeScript 的同步内存宿主。 */
 export class ScriptProject {
   readonly sources = new Map<string, ts.SourceFile>();
@@ -66,6 +104,7 @@ export class ScriptProject {
   private readonly reading = new Map<string, Promise<WorkspaceText | undefined>>();
   private readonly readingDirectories = new Map<string, Promise<boolean>>();
   private readonly directories = new Map<string, boolean>();
+  private readonly pathSnapshots = new Map<string, import('../../api').WorkspacePathSnapshot>();
   private readonly maxFiles: number;
   private readonly maxDepth: number;
   private previousSources: ReadonlyMap<string, ts.SourceFile> | undefined;
@@ -187,10 +226,21 @@ export class ScriptProject {
   private text(uri: string, pending: Set<string>): string | undefined {
     uri = canonical(uri);
     if (!this.documents.has(uri)) {
+      const known = this.lookup(uri);
+      if (known === 'missing' || known === 'directory') return undefined;
       if (pending.size + this.documents.size + this.reading.size < this.maxFiles * 24 + 128) pending.add(uri);
       else this.exhausted = true;
     } else this.observe(uri);
     return this.documents.get(uri)?.text;
+  }
+
+  /** 同步路径结论仍登记全部原始依赖，结构变化后必须重建引用图。 */
+  private lookup(uri: string): import('../../api').WorkspacePathSnapshot['kind'] | undefined {
+    const snapshot = this.pathSnapshots.get(uri) ?? this.reader.lookup?.(uri);
+    if (!snapshot) return undefined;
+    if (this.pathSnapshots.size < this.maxFiles * 24 + 128) this.pathSnapshots.set(uri, snapshot);
+    for (const item of snapshot.dependencies) { if (!this.revisions.has(item.uri)) this.revisions.set(item.uri, item.revision); this.observe(item.uri); }
+    return snapshot.kind;
   }
 
   /** 未知目录先等待异步探测，重试时才允许官方解析器搜索其中的文件。 */
@@ -200,6 +250,8 @@ export class ScriptProject {
     const known = this.directories.get(uri);
     if (known !== undefined) { this.observe(uri); return known; }
     if (this.directories.size + pending.size + this.readingDirectories.size >= this.maxFiles * 8 + 128) { this.exhausted = true; return false; }
+    const snapshot = this.lookup(uri);
+    if (snapshot) { const exists = snapshot === 'directory'; this.directories.set(uri, exists); return exists; }
     pending.add(uri);
     return false;
   }
@@ -443,7 +495,7 @@ export class ScriptProject {
       const leanComments = /\.[cm]?tsx?$/i.test(current) && !content.text.includes('(') && !content.text.includes('=>');
       const source = previous?.text === content.text ? previous : ts.createSourceFile(current, content.text, { languageVersion: ts.ScriptTarget.Latest, jsDocParsingMode: leanComments ? ts.JSDocParsingMode.ParseForTypeErrors : ts.JSDocParsingMode.ParseAll }, current === this.entryUri, /\.wxs$/i.test(current) ? ts.ScriptKind.JS : undefined);
       this.sources.set(current, source);
-      const info = ts.preProcessFile(content.text, true, true);
+      const info = preprocess(source, this.reader.revision);
       const imports = this.entryImports?.uri === current ? info.importedFiles.filter((item) => this.entryImports!.names.has(item.fileName)) : info.importedFiles;
       if (this.maxDepth && depth >= this.maxDepth && (imports.length || info.referencedFiles.length || info.libReferenceDirectives.length)) {
         this.exhausted = true;

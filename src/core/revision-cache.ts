@@ -8,6 +8,11 @@ export function createRevisionCache<T>(revision: (uri: string) => string, load: 
   let total = 0;
   let active = true;
   return {
+    /** 只查看仍有效的缓存，不发起读取。 */
+    peek(uri: string): T | undefined {
+      const cached = entries.get(uri);
+      return cached && cached.revision === revision(uri) ? cached.value : undefined;
+    },
     /** 每次命中仍观察依赖，读取期间变化的结果不进入缓存。 */
     async read(uri: string): Promise<T> {
       const own = revision(uri);

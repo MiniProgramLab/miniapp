@@ -145,3 +145,38 @@ test('依赖绑定后保留父节点和参数文档，声明来源与草稿坐�
   const targets = await createScriptResolver(graph.reader).resolve(graph.query('save'), { text: 'save', range: { start: 2, end: 6 }, bindings: [], event: true });
   assert.ok(targets.some((item) => item.uri === source.fileName && graph.documents.get(item.uri)!.slice(item.range.start, item.range.end) === 'save'));
 });
+
+test('无类型约束的 TS 数组不推导整组类型，显式元素类型继续限定可见字段', async () => {
+  const graph = fixture({ 'page.ts': `const first={title:'首项'};const rest=[{count:1}];const list=[first,...rest];const constrained:[{visible:string}]=[{visible:'值',hidden:true}];Page({data:{list,constrained}});` });
+  const created = (await new ScriptProject(graph.reader, graph.query('list.'), {}).create())!;
+  const actual = created.program.getTypeChecker();
+  let arrays = 0;
+  const checker = new Proxy(actual, { get(target, key) {
+    if (key === 'getTypeAtLocation') return (node: ts.Node) => { if (ts.isArrayLiteralExpression(node)) arrays++; return target.getTypeAtLocation(node); };
+    return Reflect.get(target, key);
+  } });
+  const values = new Values(checker, () => false, () => undefined);
+  const declarations = created.entry.statements.filter(ts.isVariableStatement).flatMap((statement) => [...statement.declarationList.declarations]);
+  const list = declarations.find((node) => node.name.getText() === 'list')!;
+  const items = values.elements(values.value(list));
+  assert.deepEqual(items.flatMap((item) => [...values.fields(item).keys()]).sort(), ['count', 'title']); assert.equal(arrays, 0);
+  const constrained = declarations.find((node) => node.name.getText() === 'constrained')!;
+  const typed = values.elements(values.value(constrained));
+  assert.ok(typed.length); assert.deepEqual([...values.fields(typed[0]!).keys()], ['visible']);
+});
+
+test('跨页面复用导入扫描后，公共模块改换导出仍刷新类型与声明坐标', async () => {
+  const graph = fixture({ 'page.ts': `import {model} from './shared';Page({data:{model}});`, 'other.ts': `import {model} from './shared';Page({data:{model}});`,
+    'shared.ts': `export {model} from './left';`, 'left.ts': `export const model={/** 旧字段 */title:'标题'};`, 'right.ts': `\nexport const model={/** 新字段 */title:1,added:true};` });
+  const scripts = createScriptResolver(graph.reader), expression = { text: 'model.', range: { start: 2, end: 8 }, bindings: [] };
+  const first = graph.query('model.'), second = { ...first, document: { ...first.document, uri: graph.root + 'other.wxml' } };
+  assert.deepEqual((await scripts.complete!(first, expression)).map((item) => item.label), ['title']);
+  assert.deepEqual((await scripts.complete!(second, expression)).map((item) => item.label), ['title']);
+  graph.documents.set(graph.root + 'shared.ts', `export {model} from './right';`); graph.revisions.changed(graph.root + 'shared.ts', graph.root);
+  assert.deepEqual((await scripts.complete!(second, expression)).map((item) => item.label).sort(), ['added', 'title']);
+  const text = 'model.title', request = { ...graph.query(text), document: { ...graph.query(text).document, uri: second.document.uri } };
+  const selected = { text, range: { start: 2, end: 2 + text.length }, bindings: [] };
+  assert.match((await scripts.hover!(request, selected))!.description, /新字段/);
+  const targets = await scripts.resolve(request, selected);
+  assert.equal(targets[0]!.uri, graph.root + 'right.ts'); assert.equal(graph.documents.get(targets[0]!.uri)!.slice(targets[0]!.range.start, targets[0]!.range.end), 'title');
+});

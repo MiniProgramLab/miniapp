@@ -66,7 +66,7 @@ export class ComputeTransport {
     if (Date.now() < this.failedUntil) throw new Error('语义线程暂时不可用。');
     if (this.worker) return this.worker;
     const worker = new Worker(this.host.filename, { workerData: { session: ++this.generation,
-      revision: !!this.host.reader.revision, directory: !!this.host.reader.directory, findFiles: !!this.host.reader.findFiles } });
+      revision: !!this.host.reader.revision, directory: !!this.host.reader.directory, entries: !!this.host.reader.entries, findFiles: !!this.host.reader.findFiles } });
     this.worker = worker;
     const send = createMessageBatch<ComputeReadReply>((messages) => { if (worker === this.worker) worker.postMessage(messages.length === 1 ? messages[0] : messages); });
     worker.on('message', (message: ComputeReply | ComputeRead | ComputeRead[] | ComputeReady) => {
@@ -116,6 +116,7 @@ export class ComputeTransport {
       const provide = async (): Promise<unknown> => {
         if (message.method === 'read') return reader.read(uri);
         if (message.method === 'directory') return reader.directory?.(uri) ?? false;
+        if (message.method === 'entries') return reader.entries?.(uri);
         return reader.findFiles?.(uri, String(message.args[1]), Number(message.args[2]), message.args[3] as { root: string } | undefined) ?? [];
       };
       const result = reader.capture ? await reader.capture(provide) : { value: await provide(), dependencies: [] };
@@ -186,7 +187,7 @@ export class ComputeTransport {
 
   /** 依赖在执行途中变化时重试，持续变化时交给同一语义实现重新查询。 */
   async query<T>(method: string, request: LanguageRequest, args: unknown[] = [], fallback?: (request: LanguageRequest) => LanguageResult<T>): Promise<Computed<T>> {
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       const worker = this.start(), reader = this.host.reader;
       if (request.cancellation.isCancellationRequested) return { value: undefined as T, dependencies: [] };
       // 无事件宿主也核对已观察依赖，变化先送入线程再开始新查询。

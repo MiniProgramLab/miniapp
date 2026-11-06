@@ -59,6 +59,7 @@
         "TextEdit",
         "TextRange",
         "WorkspaceDependency",
+        "WorkspaceDirectoryEntry",
         "WorkspaceReader",
         "WorkspaceText"
       ],
@@ -86,6 +87,8 @@
         "LanguageResult",
         "Logger",
         "WorkspaceDependency",
+        "WorkspaceDirectoryEntry",
+        "WorkspacePathSnapshot",
         "WorkspaceReader"
       ],
       "features": [],
@@ -178,6 +181,8 @@
         "TextEdit",
         "TextRange",
         "WorkspaceDependency",
+        "WorkspaceDirectoryEntry",
+        "WorkspacePathSnapshot",
         "WorkspaceReader",
         "WorkspaceText"
       ],

@@ -43,7 +43,9 @@ function job(): Job { const value = contexts.getStore(); if (!value) throw new E
 
 /** 根目录按资源归属匹配，远程与虚拟 URI 保留原协议。 */
 function root(uri: string): string | undefined {
-  return [...job().message.roots].sort((a, b) => b.length - a.length).find((value) => uri === value || uri.startsWith(value.replace(/\/$/, '') + '/'));
+  let selected: string | undefined;
+  for (const value of job().message.roots) if ((!selected || value.length > selected.length) && (uri === value || uri.startsWith(value.replace(/\/$/, '') + '/'))) selected = value;
+  return selected;
 }
 
 /** 文件 RPC 只传公共读取参数，编译器无需直接访问磁盘。 */
@@ -56,7 +58,7 @@ function fetch(method: ComputeRead['method'], args: unknown[]): Promise<WorkerFi
 }
 
 /** 目录、阴性探测和文件快照都在线程内有界复用，避免重复往返宿主。 */
-const files = createWorkerFileCache({ revision: revisions.revision, observe: tracking.observe, load: fetch });
+const files = createWorkerFileCache({ revision: revisions.revision, observe: tracking.observe, load: fetch, entries: (uri) => !!workerData.entries && !!root(uri) });
 /** 缺少修订能力时继续逐次读取，不缓存无法确认版本的数据。 */
 async function read(method: ComputeRead['method'], args: unknown[]): Promise<unknown> { return workerData.revision ? files.read(method, args) : (await fetch(method, args)).value; }
 
@@ -64,6 +66,7 @@ async function read(method: ComputeRead['method'], args: unknown[]): Promise<unk
 const reader: WorkspaceReader = {
   root, capture: tracking.capture,
   ...(workerData.revision ? { revision: tracking.observe } : {}),
+  ...(workerData.revision ? { lookup: files.lookup } : {}),
   read: (uri) => read('read', [uri]) as ReturnType<WorkspaceReader['read']>,
   ...(workerData.directory ? { directory: (uri: string) => read('directory', [uri]) as Promise<boolean> } : {}),
   ...(workerData.findFiles ? { findFiles: (...args: Parameters<NonNullable<WorkspaceReader['findFiles']>>) => read('findFiles', args) as Promise<readonly string[]> } : {}),
