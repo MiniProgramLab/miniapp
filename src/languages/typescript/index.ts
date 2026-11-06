@@ -16,6 +16,8 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
     return service;
   }
   return {
+    /** 页面上下文与其他脚本能力共用延迟初始化。 */
+    async hasContext(request) { return await (await load(request))?.hasContext?.(request) ?? false; },
     /** 页面 URL 按需初始化，不在扩展激活时读取应用配置。 */
     async routeQueries(request, all) { return await (await load(request))?.routeQueries?.(request, all) ?? []; },
     /** 配置参数追踪使用同一静态服务及取消信号。 */
@@ -121,7 +123,7 @@ export function createComponentScriptResolver(reader: WorkspaceReader, options: 
 }
 
 /** 提供器同步注册，定义查询异步加载语义实现，不影响原生 TS/JS 编辑。 */
-export function createScriptNavigationPlugin(reader: WorkspaceReader, rename?: LanguageFeatures['rename'], references?: LanguageFeatures['references']): LanguagePlugin {
+export function createScriptNavigationPlugin(reader: WorkspaceReader, rename?: LanguageFeatures['rename'], references?: LanguageFeatures['references'], options: (uri: string) => ScriptOptions = () => ({})): LanguagePlugin {
   return {
     id: 'miniprogramlab.script-navigation', displayName: '智能脚本源码导航', languages: ['typescript', 'javascript', 'typescriptreact', 'javascriptreact'],
     /** 无文件解析端口或无效 URI 时沿用原有空结果。 */
@@ -130,7 +132,7 @@ export function createScriptNavigationPlugin(reader: WorkspaceReader, rename?: L
         if (request.cancellation.isCancellationRequested || !reader.fileResolver) return [];
         try { new URL('./', request.document.uri); } catch { return []; }
         const module = await import('./navigation');
-        return request.cancellation.isCancellationRequested ? [] : module.provideScriptDefinition(reader, request);
+        return request.cancellation.isCancellationRequested ? [] : module.provideScriptDefinition(reader, request, options(request.document.uri));
       } } };
     },
   };

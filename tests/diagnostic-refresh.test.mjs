@@ -12,10 +12,15 @@ class Emitter {
 const document = (uri, languageId = 'wxml') => ({ uri: { toString: () => uri }, languageId, version: 1, isClosed: false, getText: () => '<view/>', offsetAt: () => 0, positionAt: () => ({ line: 0, character: 0 }) });
 const opened = new Emitter(), changed = new Emitter(), closed = new Emitter(), files = new Emitter();
 const first = document('file:///workspace/first.wxml'), second = document('file:///workspace/second.wxml');
+const visible = new Emitter();
+let scope = 'visible', hoverProvider;
 const stub = {
   workspace: { textDocuments: [first, second], onDidOpenTextDocument: opened.event, onDidChangeTextDocument: changed.event, onDidCloseTextDocument: closed.event,
+    getConfiguration: () => ({ get: () => scope }),
     openTextDocument: async (uri) => { if (uri.toString().includes('deleted')) throw new Error('目标不存在'); return document(uri.toString()); } },
-  languages: { match: (selector, document) => selector.some((item) => item.language === document.languageId), createDiagnosticCollection: () => ({ set() {}, delete() {}, dispose() {} }), registerDefinitionProvider: () => ({ dispose() {} }) },
+  window: { visibleTextEditors: [{ document: first }, { document: second }], onDidChangeVisibleTextEditors: visible.event },
+  languages: { match: (selector, document) => selector.some((item) => item.language === document.languageId), createDiagnosticCollection: () => ({ set() {}, delete() {}, dispose() {} }), registerDefinitionProvider: () => ({ dispose() {} }),
+    registerHoverProvider: (_selector, provider) => { hoverProvider = provider; return { dispose() { hoverProvider = undefined; } }; } },
   Uri: { parse: (value) => ({ toString: () => value }) },
   Position: class { constructor(line, character) { this.line = line; this.character = character; } },
   Range: class { constructor(start, end) { this.start = start; this.end = end; } },
@@ -35,6 +40,28 @@ const { createNavigationTracking } = require('../src/adapters/vscode/navigation-
 /** 等待宿主原有的 300ms 合并窗口，测试不自行实现刷新规则。 */
 const settled = () => new Promise((resolve) => setTimeout(resolve, 360));
 
+test('交互悬浮中断后台诊断，查询结束后恢复检查', async () => {
+  stub.window.visibleTextEditors = [{ document: first }];
+  let calls = 0, diagnosticToken, releaseDiagnostic, releaseHover;
+  const diagnosticGate = new Promise((resolve) => { releaseDiagnostic = resolve; });
+  const hoverGate = new Promise((resolve) => { releaseHover = resolve; });
+  const registration = createLanguageHost({ info() {}, error(_message, error) { throw error; } }).register({ id: 'test.priority', displayName: '交互优先', languages: ['wxml'] }, {
+    diagnostics: { async provide(request) { calls++; diagnosticToken = request.cancellation; if (calls === 1) await diagnosticGate; return []; } },
+    hover: { async provide() { await hoverGate; return undefined; } },
+  });
+  try {
+    await settled();
+    assert.equal(calls, 1);
+    const hover = hoverProvider.provideHover(first, new stub.Position(0, 0), { isCancellationRequested: false });
+    assert.equal(diagnosticToken.isCancellationRequested, true, '正在执行的诊断及时取消');
+    releaseDiagnostic();
+    await settled();
+    assert.equal(calls, 1, '交互未结束时不重新启动后台诊断');
+    releaseHover(); await hover; await settled();
+    assert.equal(calls, 2, '交互完成后恢复诊断');
+  } finally { releaseDiagnostic(); releaseHover(); registration.dispose(); stub.window.visibleTextEditors = [{ document: first }, { document: second }]; }
+});
+
 test('真实诊断宿主只刷新相关依赖，磁盘和配置事件与当前文档编辑正常生效', async () => {
   const revisions = createWorkspaceRevisions();
   const tracking = createDependencyTracking(revisions.revision);
@@ -51,11 +78,11 @@ test('真实诊断宿主只刷新相关依赖，磁盘和配置事件与当前�
     await settled();
     const calls = () => [counts.get(first.uri.toString()), counts.get(second.uri.toString())];
     assert.deepEqual(calls(), [1, 1]);
-    changed.fire({ document: document('file:///workspace/unrelated.ts', 'typescript') });
+    changed.fire({ document: document('file:///workspace/unrelated.ts', 'typescript'), contentChanges: [{}] });
     await settled();
     assert.deepEqual(calls(), [1, 1], '无关同语言文件不重算已有消费文档');
     revisions.changed('file:///workspace/first.ts', 'file:///workspace/');
-    changed.fire({ document: document('file:///workspace/first.ts', 'typescript') });
+    changed.fire({ document: document('file:///workspace/first.ts', 'typescript'), contentChanges: [{}] });
     await settled();
     assert.deepEqual(calls(), [2, 1]);
     revisions.changed('file:///workspace/second.ts', 'file:///workspace/');
@@ -63,7 +90,7 @@ test('真实诊断宿主只刷新相关依赖，磁盘和配置事件与当前�
     await settled();
     assert.deepEqual(calls(), [2, 2], '未打开依赖的磁盘事件也触发消费文档');
     first.version++;
-    changed.fire({ document: first });
+    changed.fire({ document: first, contentChanges: [{}] });
     await settled();
     assert.deepEqual(calls(), [3, 2], '当前模板编辑不会被依赖筛选漏掉');
     revisions.invalidate(); files.fire(undefined);
@@ -80,9 +107,32 @@ test('没有跟踪依赖的外部提供器保留原有语言刷新语义', async
   const registration = host.register({ id: 'test.external', displayName: '外部验收', languages: ['wxml'] }, { diagnostics: { dependencyLanguages: ['typescript'], provide: () => { calls++; return []; } } });
   try {
     await settled(); const initial = calls;
-    changed.fire({ document: document('file:///workspace/external.ts', 'typescript') });
+    changed.fire({ document: document('file:///workspace/external.ts', 'typescript'), contentChanges: [{}] });
     await settled(); assert.equal(calls, initial + 2);
   } finally { registration.dispose(); tracking.dispose(); }
+});
+
+test('后台诊断跟随可见编辑器，隐藏草稿再次显示时补查且可恢复全部打开文档', async () => {
+  const counts = new Map();
+  stub.window.visibleTextEditors = [{ document: first }];
+  const registration = createLanguageHost({ info() {}, error(_message, error) { throw error; } }).register({ id: 'test.visible', displayName: '可见检查', languages: ['wxml'] }, { diagnostics: { provide(request) {
+    counts.set(request.document.uri, (counts.get(request.document.uri) ?? 0) + 1); return [];
+  } } });
+  try {
+    await settled();
+    assert.equal(counts.get(second.uri.toString()), undefined);
+    second.version++;
+    changed.fire({ document: second, contentChanges: [{}] });
+    stub.window.visibleTextEditors = [{ document: second }]; visible.fire();
+    await settled();
+    assert.equal(counts.get(second.uri.toString()), 1, '显示隐藏草稿后才检查');
+    visible.fire(); changed.fire({ document: second, contentChanges: [] });
+    await settled();
+    assert.equal(counts.get(second.uri.toString()), 1, '重复显示或空编辑事件不重算');
+    scope = 'opened'; first.version++; visible.fire();
+    await settled();
+    assert.equal(counts.get(first.uri.toString()), 2, '兼容原有全部打开文档检查');
+  } finally { registration.dispose(); scope = 'visible'; stub.window.visibleTextEditors = [{ document: first }, { document: second }]; }
 });
 
 test('导航宿主合并来源、报告预算并排除删除目标、取消与过期草稿', async () => {

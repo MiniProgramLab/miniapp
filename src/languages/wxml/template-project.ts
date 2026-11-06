@@ -22,11 +22,23 @@ interface TemplateCall {
   readonly transfer: boolean;
 }
 
+/** 已核验的反向调用图只保存快照，文件或目录修订变化时重新收集边。 */
+interface CachedTemplateIndex {
+  readonly key: string;
+  readonly input: WorkspaceText;
+  readonly documents: ReadonlyMap<string, TemplateDocument | undefined>;
+  readonly incoming: ReadonlyMap<string, TemplateCall[]>;
+  readonly dependencies: readonly import('../../api').WorkspaceDependency[];
+  readonly weight: number;
+}
+const indexes = new WeakMap<NonNullable<WorkspaceReader['revision']>, CachedTemplateIndex[]>();
+
 /** 请求级模板引用图，只沿真实 include 和 template 调用追踪上下文。 */
 class TemplateProject {
   private readonly documents = new Map<string, TemplateDocument | undefined>();
   private readonly maxFiles: number;
   private bytes = 0;
+  private incomplete = false;
   private paths = 0;
   private readonly incoming = new Map<string, TemplateCall[]>();
   private readonly roots = new Map<string, string>();
@@ -43,11 +55,11 @@ class TemplateProject {
   private async read(uri: string): Promise<TemplateDocument | undefined> {
     if (this.request.cancellation.isCancellationRequested) return undefined;
     if (this.documents.has(uri)) return this.documents.get(uri);
-    if (this.documents.size >= this.maxFiles) { this.reader.navigation?.record({ code: 'budget', message: `模板图达到 ${this.maxFiles} 份文件上限，调用上下文可能不完整；可检查 wxml.maxTemplateFiles。`, uri }); return undefined; }
+    if (this.documents.size >= this.maxFiles) { this.incomplete = true; this.reader.navigation?.record({ code: 'budget', message: `模板图达到 ${this.maxFiles} 份文件上限，调用上下文可能不完整；可检查 wxml.maxTemplateFiles。`, uri }); return undefined; }
     const snapshot = uri === this.request.document.uri ? this.request.document : await this.reader.read(uri);
     if (this.request.cancellation.isCancellationRequested) return undefined;
     if (!snapshot || snapshot.text.length > 2_000_000 || this.bytes + snapshot.text.length > 8_000_000) {
-      if (snapshot) this.reader.navigation?.record({ code: 'budget', message: '模板文本超过单文件或总量上限，未继续展开。', uri });
+      if (snapshot) { this.incomplete = true; this.reader.navigation?.record({ code: 'budget', message: '模板文本超过单文件或总量上限，未继续展开。', uri }); }
       this.documents.set(uri, undefined);
       return undefined;
     }
@@ -98,17 +110,44 @@ class TemplateProject {
     return undefined;
   }
 
-  /** 文件枚举只建立调用关系，不将未引用页面的同名脚本成员作为候选。 */
+  /** 连续模板查询复用已核验的调用图，说明命令仍记录完整扫描过程。 */
   private async index(): Promise<void> {
+    const revision = this.reader.revision, capture = this.reader.capture;
+    if (!revision || !capture || this.reader.navigation?.active) return this.buildIndex();
+    const root = this.reader.root(this.request.document.uri);
+    const key = JSON.stringify([root, this.request.document.uri, this.maxFiles]);
+    const cached = indexes.get(revision)?.find((item) => item.key === key);
+    if (cached && cached.input.text === this.request.document.text && cached.input.version === this.request.document.version && cached.dependencies.every((item) => revision(item.uri) === item.revision)) {
+      for (const [uri, document] of cached.documents) this.documents.set(uri, document);
+      for (const [target, calls] of cached.incoming) this.incoming.set(target, calls);
+      return;
+    }
+    const result = await this.reader.capture!(async () => {
+      if (root) revision(root);
+      revision(this.request.document.uri);
+      await this.buildIndex();
+    });
+    if (!this.incomplete && !this.request.cancellation.isCancellationRequested && result.dependencies.every((item) => revision(item.uri) === item.revision)) {
+      const entries = (indexes.get(revision) ?? []).filter((item) => item.key !== key);
+      entries.push({ key, input: this.request.document, documents: new Map(this.documents), incoming: new Map(this.incoming), dependencies: result.dependencies, weight: this.bytes });
+      while (entries.length > 4 || entries.reduce((total, item) => total + item.weight, 0) > 8_000_000) entries.shift();
+      indexes.set(revision, entries);
+    }
+  }
+
+  /** 文件枚举只建立调用关系，不将未引用页面的同名脚本成员作为候选。 */
+  private async buildIndex(): Promise<void> {
     await this.read(this.request.document.uri);
     if (this.request.cancellation.isCancellationRequested) return;
+    const checkpoint = this.request.checkpoint;
     const files = await this.reader.findFiles?.(this.request.document.uri, '**/*.wxml', this.maxFiles) ?? [];
     for (const uri of files) {
-      if (this.request.cancellation.isCancellationRequested) return;
+      if (this.request.cancellation.isCancellationRequested || checkpoint && !await checkpoint(this.request.cancellation)) return;
       await this.read(uri);
     }
     // Map 迭代会包含后续发现的直接引用，支持尚未被文件枚举覆盖的模板。
     for (const document of this.documents.values()) {
+      if (checkpoint && !await checkpoint(this.request.cancellation)) return;
       if (!document || this.request.cancellation.isCancellationRequested) continue;
       for (const node of document.nodes) {
         if (node.tag.name !== 'import' && node.tag.name !== 'include') continue;
@@ -121,15 +160,16 @@ class TemplateProject {
     // 反向边只索引一次，递归追踪不重复扫描所有文件中的调用标签。
     let edges = 0;
     for (const document of this.documents.values()) {
+      if (checkpoint && !await checkpoint(this.request.cancellation)) return;
       if (!document || this.request.cancellation.isCancellationRequested) continue;
       for (const include of document.includes) {
-        if (++edges > 10000) return;
+        if (++edges > 10000) { this.incomplete = true; return; }
         this.link(`${include.target}#root`, { document, node: include.node, transfer: false });
       }
       for (const node of document.nodes) {
         if (node.tag.name !== 'template') continue;
         for (const target of this.definitions(document, node)) {
-          if (++edges > 10000) return;
+          if (++edges > 10000) { this.incomplete = true; return; }
           this.link(`${target.document.uri}#${target.node.tag.start}`, { document, node, transfer: true });
         }
       }
@@ -201,6 +241,8 @@ export async function componentContexts(reader: WorkspaceReader, request: Langua
 /** 装饰脚本导航端口，使独立模板可通过调用图继承页面上下文。 */
 export function createTemplateResolver(reader: WorkspaceReader, scripts: ScriptDefinitionResolver, options: (uri: string) => TemplateOptions = () => ({})): ScriptDefinitionResolver {
   return {
+    /** 上下文存在性由脚本模块确认，模板模块不解析脚本语法。 */
+    hasContext: (request) => scripts.hasContext?.(request) ?? false,
     /** 实例来源和消费模板筛选保留原脚本端口的取消与预算行为。 */
     instanceAccess: (request) => scripts.instanceAccess?.(request),
     /** 选择器列表从实际脚本快照获得。 */
@@ -228,7 +270,7 @@ export function createTemplateResolver(reader: WorkspaceReader, scripts: ScriptD
       if (request.cancellation.isCancellationRequested || !scripts.analyze) return undefined;
       if (!ownerAt(request.document.text, templateNodes(request.document.text), request.offset)) {
         const direct = await scripts.analyze(request, expression);
-        if (direct || request.cancellation.isCancellationRequested) return direct;
+        if (direct || request.cancellation.isCancellationRequested || await scripts.hasContext?.(request)) return direct;
       }
       return scripts.analyze(request, await new TemplateProject(reader, request, options(request.document.uri)).expression(expression));
     },
@@ -237,7 +279,7 @@ export function createTemplateResolver(reader: WorkspaceReader, scripts: ScriptD
       if (request.cancellation.isCancellationRequested || !scripts.complete) return [];
       if (!ownerAt(request.document.text, templateNodes(request.document.text), request.offset)) {
         const direct = await scripts.complete(request, expression);
-        if (direct.length || request.cancellation.isCancellationRequested) return direct;
+        if (direct.length || request.cancellation.isCancellationRequested || await scripts.hasContext?.(request)) return direct;
       }
       return scripts.complete(request, await new TemplateProject(reader, request, options(request.document.uri)).expression(expression));
     },
@@ -252,7 +294,7 @@ export function createTemplateResolver(reader: WorkspaceReader, scripts: ScriptD
       if (request.cancellation.isCancellationRequested || !scripts.symbols) return [];
       if (!ownerAt(request.document.text, templateNodes(request.document.text), request.offset)) {
         const direct = await scripts.symbols(request, expression);
-        if (direct.length || request.cancellation.isCancellationRequested) return direct;
+        if (direct.length || request.cancellation.isCancellationRequested || await scripts.hasContext?.(request)) return direct;
       }
       return scripts.symbols(request, await new TemplateProject(reader, request, options(request.document.uri)).expression(expression));
     },
@@ -261,7 +303,7 @@ export function createTemplateResolver(reader: WorkspaceReader, scripts: ScriptD
       if (request.cancellation.isCancellationRequested || !scripts.signature) return [];
       if (!ownerAt(request.document.text, templateNodes(request.document.text), request.offset)) {
         const direct = await scripts.signature(request, expression);
-        if (direct.length || request.cancellation.isCancellationRequested) return direct;
+        if (direct.length || request.cancellation.isCancellationRequested || await scripts.hasContext?.(request)) return direct;
       }
       return scripts.signature(request, await new TemplateProject(reader, request, options(request.document.uri)).expression(expression));
     },
@@ -271,7 +313,7 @@ export function createTemplateResolver(reader: WorkspaceReader, scripts: ScriptD
       // 普通页面已有同名脚本时复用直接导航，不为每次 F12 枚举工作区。
       if (!ownerAt(request.document.text, templateNodes(request.document.text), request.offset)) {
         const direct = await scripts.resolve(request, expression);
-        if (direct.length || request.cancellation.isCancellationRequested) return direct;
+        if (direct.length || request.cancellation.isCancellationRequested || await scripts.hasContext?.(request)) return direct;
       }
       const resolved = await new TemplateProject(reader, request, options(request.document.uri)).expression(expression);
       return request.cancellation.isCancellationRequested ? [] : scripts.resolve(request, resolved);
@@ -281,7 +323,7 @@ export function createTemplateResolver(reader: WorkspaceReader, scripts: ScriptD
       if (request.cancellation.isCancellationRequested || !scripts.hover) return undefined;
       if (!ownerAt(request.document.text, templateNodes(request.document.text), request.offset)) {
         const direct = await scripts.hover(request, expression);
-        if (direct || request.cancellation.isCancellationRequested) return direct;
+        if (direct || request.cancellation.isCancellationRequested || await scripts.hasContext?.(request)) return direct;
       }
       const resolved = await new TemplateProject(reader, request, options(request.document.uri)).expression(expression);
       return request.cancellation.isCancellationRequested ? undefined : scripts.hover(request, resolved);

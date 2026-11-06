@@ -80,7 +80,7 @@ function createHandler(project: ScriptProject, context: NonNullable<Awaited<Retu
 /** 仅完整且已识别的页面作用域参与名称检查，未知宏、动态索引和开放类型不误报。 */
 export async function analyzeTemplate(project: ScriptProject, request: LanguageRequest, expression: TemplateExpression, scopes?: readonly TemplateScope[], context?: Awaited<ReturnType<typeof queryContext>>): Promise<ExpressionInfo | undefined> {
   context ??= await queryContext(project, request, expression, scopes);
-  if (!context || !context.registrations.length || project.exhausted || project.cancelled) return undefined;
+  if (!context || !context.registrations.length || context.values.exhausted || project.exhausted || project.cancelled) return undefined;
   const { values, roots } = context;
   /** 动态 setData 或未知 Behavior 不能证明名称不存在，静态更新字段则作为有效名称。 */
   let openScope = false;

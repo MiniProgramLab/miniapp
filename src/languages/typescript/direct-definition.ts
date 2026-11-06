@@ -1,8 +1,10 @@
 import ts from 'typescript';
-import type { Definition, LanguageRequest, NavigationStep, TemplateExpression, WorkspaceReader, WorkspaceText } from '../../api';
+import type { Definition, Hover, LanguageRequest, NavigationStep, TemplateExpression, WorkspaceReader, WorkspaceText } from '../../api';
 import { parse } from './template-values';
 import { reference } from './query';
 import { ScriptProject, type ScriptOptions } from './project';
+import { declarationDocumentation } from './documentation';
+import { completionSite } from './completion';
 
 /** 直接注册只做语法定位，缓存按原文核对，不复用类型检查器修改过的节点。 */
 const sources = new Map<string, ts.SourceFile>();
@@ -67,6 +69,8 @@ interface DirectValue {
   readonly declaration?: ts.Node;
   /** 配置对象的显式类型必须由完整检查器确认可见成员。 */
   readonly constrained?: boolean;
+  /** 组件参数的运行时类型由完整语义确定。 */
+  readonly property?: boolean;
 }
 
 /** 明确引用链按需读取；null 表示确定缺少成员，undefined 表示必须交回完整语义。 */
@@ -168,7 +172,7 @@ class DirectReferences {
 
   /** 字面量、别名和无参工厂可直接还原，参数工厂及动态表达式保留完整语义。 */
   private async value(node: ts.Node, declaration?: ts.Node, seen = new Set<ts.Node>()): Promise<DirectValue | undefined> {
-    if (++this.steps > 256 || seen.has(node) || seen.size > 40 || this.request.cancellation.isCancellationRequested) return undefined;
+    if (++this.steps > 512 || seen.has(node) || seen.size > 40 || this.request.cancellation.isCancellationRequested) return undefined;
     const visited = new Set(seen).add(node);
     if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isTypeAssertionExpression(node) || ts.isNonNullExpression(node) || ts.isSatisfiesExpression(node)) {
       const value = await this.value(node.expression, declaration, visited);
@@ -207,29 +211,153 @@ class DirectReferences {
     return undefined;
   }
 
+  /** 有限字面量键只用于排除无关展开，不猜测动态对象的字段值。 */
+  private async typeKeys(type: ts.TypeNode, seen = new Set<ts.Node>()): Promise<ReadonlySet<string> | undefined> {
+    if (seen.has(type) || seen.size >= 20 || this.request.cancellation.isCancellationRequested) return undefined;
+    const visited = new Set(seen).add(type);
+    if (ts.isLiteralTypeNode(type) && ts.isStringLiteralLike(type.literal)) return new Set([type.literal.text]);
+    if (ts.isParenthesizedTypeNode(type)) return this.typeKeys(type.type, visited);
+    if (ts.isUnionTypeNode(type)) {
+      if (type.types.length > 128) return undefined;
+      const parts = await Promise.all(type.types.map((part) => this.typeKeys(part, visited)));
+      return parts.every((part) => part !== undefined) ? new Set(parts.flatMap((part) => [...part!])) : undefined;
+    }
+    if (ts.isTypeOperatorNode(type) && type.operator === ts.SyntaxKind.KeyOfKeyword && ts.isTypeQueryNode(type.type) && ts.isIdentifier(type.type.exprName)) {
+      const value = await this.value(type.type.exprName);
+      const members = value && !value.constrained && fields(value.node);
+      return members && members.size <= 256 ? new Set(members.keys()) : undefined;
+    }
+    if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName) && !type.typeArguments?.length) {
+      const name = type.typeName.text;
+      const alias = type.getSourceFile().statements.find((statement): statement is ts.TypeAliasDeclaration => ts.isTypeAliasDeclaration(statement) && statement.name.text === name);
+      return alias ? this.typeKeys(alias.type, visited) : undefined;
+    }
+    return undefined;
+  }
+
+  /** 只承认未被本地声明遮蔽的有限 Record 键。 */
+  private async recordKeys(value: DirectValue): Promise<ReadonlySet<string> | undefined> {
+    const declaration = value.declaration?.parent;
+    const type = declaration && ts.isVariableDeclaration(declaration) ? declaration.type : undefined;
+    if (type && ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName) && type.typeName.text === 'Record' && type.typeArguments?.length === 2) {
+      const source = type.getSourceFile();
+      const shadowed = source.statements.some((statement) => (ts.isTypeAliasDeclaration(statement) || ts.isInterfaceDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement) || ts.isModuleDeclaration(statement) || ts.isImportEqualsDeclaration(statement)) && statement.name?.text === 'Record'
+        || ts.isImportDeclaration(statement) && (statement.importClause?.name?.text === 'Record' || statement.importClause?.namedBindings && (ts.isNamespaceImport(statement.importClause.namedBindings) ? statement.importClause.namedBindings.name.text === 'Record' : statement.importClause.namedBindings.elements.some((item) => item.name.text === 'Record'))));
+      const keys = !shadowed && await this.typeKeys(type.typeArguments[0]!);
+      return keys || undefined;
+    }
+    return undefined;
+  }
+
+  /** 静态字段表只展开对象和有限键，遇到开放类型整体回退。 */
+  private async object(node: ts.Node, seen = new Set<ts.Node>()): Promise<Map<string, ts.Node> | undefined> {
+    if (seen.has(node) || seen.size > 40) return undefined;
+    const value = await this.value(node);
+    if (!value) return undefined;
+    if (value.constrained) {
+      const keys = await this.recordKeys(value);
+      return keys ? new Map([...keys].map((key) => [key, value.node])) : undefined;
+    }
+    if (!ts.isObjectLiteralExpression(value.node)) return undefined;
+    const result = new Map<string, ts.Node>(), visited = new Set(seen).add(node);
+    for (const property of value.node.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        const spread = await this.object(property.expression, visited);
+        if (!spread) return undefined;
+        for (const [name, field] of spread) result.set(name, field);
+      } else {
+        const name = property.name;
+        if (!name || !(ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name))) return undefined;
+        result.set(name.text, property);
+      }
+    }
+    return result;
+  }
+
+  /** 候选必须覆盖全部静态成员，任何不确定分支都保留完整语义处理。 */
+  async names(node: ts.Node, seen = new Set<ts.Node>()): Promise<ReadonlySet<string> | undefined> {
+    if (seen.has(node) || seen.size > 40) return undefined;
+    const config = await this.object(node);
+    if (!config) return undefined;
+    const result = new Set<string>(), visited = new Set(seen).add(node);
+    for (const group of ['behaviors', 'mixins']) {
+      const section = config.get(group);
+      if (!section) continue;
+      const list = await this.value(section);
+      if (!list || list.constrained || !ts.isArrayLiteralExpression(list.node) || list.node.elements.some(ts.isSpreadElement)) return undefined;
+      for (const item of list.node.elements) {
+        const inherited = await this.names(item, visited);
+        if (!inherited) return undefined;
+        for (const name of inherited) result.add(name);
+      }
+    }
+    const groups = ['data', 'properties', 'props', 'template', 'setup', 'methods'];
+    for (const group of groups) {
+      const section = config.get(group);
+      if (!section) continue;
+      const fields = await this.object(section);
+      if (!fields) return undefined;
+      for (const name of fields.keys()) result.add(name);
+    }
+    for (const [name, property] of config) {
+      if ([...groups, 'behaviors', 'mixins'].includes(name)) continue;
+      const value = await this.value(property);
+      if (!value) return undefined;
+      if (ts.isFunctionLike(value.node)) result.add(name);
+    }
+    return result;
+  }
+
+  /** 逆序检查目标字段，只展开可能覆盖它的对象分支。 */
+  private async property(node: ts.Node, name: string, seen = new Set<ts.Node>()): Promise<ts.ObjectLiteralElementLike | null | undefined> {
+    if (seen.has(node) || seen.size > 40 || this.request.cancellation.isCancellationRequested) return undefined;
+    const value = await this.value(node);
+    if (!value) return undefined;
+    if (value.constrained) {
+      const keys = await this.recordKeys(value);
+      if (keys && !keys.has(name)) return null;
+      return undefined;
+    }
+    if (!ts.isObjectLiteralExpression(value.node)) return undefined;
+    const visited = new Set(seen).add(node);
+    for (const property of [...value.node.properties].reverse()) {
+      if (ts.isSpreadAssignment(property)) {
+        const inherited = await this.property(property.expression, name, visited);
+        if (inherited !== null) return inherited;
+        continue;
+      }
+      const key = property.name;
+      if (!key || !(ts.isIdentifier(key) || ts.isStringLiteralLike(key) || ts.isNumericLiteral(key))) return undefined;
+      if (key.text === name) return property;
+    }
+    return null;
+  }
+
   /** 先检查覆盖项，再逆序查找继承项，只读取决定目标的 Behavior 分支。 */
   async member(node: ts.Node, name: string, seen = new Set<ts.Node>()): Promise<DirectValue | null | undefined> {
     if (seen.has(node) || seen.size > 40) return undefined;
     const resolved = await this.value(node);
-    const config = resolved && !resolved.constrained && fields(resolved.node);
+    const config = resolved && !resolved.constrained && ts.isObjectLiteralExpression(resolved.node) ? resolved.node : undefined;
     if (!config) return undefined;
     const visited = new Set(seen).add(node);
-    const own = config.get(name);
+    const own = await this.property(config, name);
+    if (own === undefined) return undefined;
     if (own) {
       const value = await this.value(own);
       if (!value) return undefined;
       if (ts.isFunctionLike(value.node)) return value;
     }
     for (const group of ['methods', 'setup', 'template', 'props', 'properties', 'data']) {
-      const section = config.get(group);
+      const section = await this.property(config, group);
+      if (section === undefined) return undefined;
       if (!section) continue;
-      const members = ts.isPropertyAssignment(section) && fields(section.initializer);
-      if (!members) return undefined;
-      const property = members.get(name);
-      if (property) return group === 'props' || group === 'properties' || local(property) ? { node: property, declaration: property.name! } : this.value(property);
+      const property = await this.property(section, name);
+      if (property === undefined) return undefined;
+      if (property) return group === 'props' || group === 'properties' ? { node: property, declaration: property.name!, property: true } : local(property) ? { node: property, declaration: property.name! } : this.value(property);
     }
     for (const group of ['mixins', 'behaviors']) {
-      const section = config.get(group);
+      const section = await this.property(config, group);
+      if (section === undefined) return undefined;
       if (!section) continue;
       const list = await this.value(section);
       if (!list || !ts.isArrayLiteralExpression(list.node) || list.node.elements.some(ts.isSpreadElement)) return undefined;
@@ -246,6 +374,9 @@ class DirectReferences {
 interface CachedReference {
   readonly key: string;
   readonly target: Omit<Definition, 'originRange' | 'version'> | undefined;
+  readonly names?: readonly string[];
+  readonly literalType?: string;
+  readonly description?: string;
   readonly documents: Map<string, WorkspaceText | undefined>;
   readonly dependencies: Map<string, string>;
   readonly paths: readonly NavigationStep[];
@@ -274,7 +405,7 @@ async function unchanged(reader: WorkspaceReader, request: LanguageRequest, cach
 }
 
 /** 语法不明确时只放弃快速路径，完整类型图仍负责最终导航结论。 */
-async function locate(request: LanguageRequest, name: string, graph: DirectReferences): Promise<Omit<Definition, 'originRange' | 'version'> | undefined> {
+async function locate(request: LanguageRequest, name: string, graph: DirectReferences): Promise<(Omit<Definition, 'originRange' | 'version'> & { literalType?: string; description?: string }) | undefined> {
   const base = request.document.uri.replace(/\.wxml$/i, '');
   for (const suffix of ['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs']) {
     const uri = base + suffix;
@@ -289,9 +420,46 @@ async function locate(request: LanguageRequest, name: string, graph: DirectRefer
     if (!target) return undefined;
     const targetUri = target.getSourceFile().fileName;
     const quote = Number(ts.isStringLiteralLike(target));
-    return { uri: targetUri, range: { start: target.getStart() + quote, end: target.end - quote } };
+    let literalType: string | undefined;
+    if (resolved && !resolved.property && !resolved.constrained && ts.isPropertyAssignment(resolved.node)) {
+      let initial = resolved.node.initializer;
+      while (ts.isParenthesizedExpression(initial)) initial = initial.expression;
+      if (ts.isStringLiteralLike(initial)) literalType = JSON.stringify(initial.text);
+      else if (ts.isNumericLiteral(initial)) literalType = String(Number(initial.text));
+      else if (initial.kind === ts.SyntaxKind.TrueKeyword || initial.kind === ts.SyntaxKind.FalseKeyword) literalType = initial.kind === ts.SyntaxKind.TrueKeyword ? 'true' : 'false';
+    }
+    return { uri: targetUri, range: { start: target.getStart() + quote, end: target.end - quote }, ...(literalType === undefined ? {} : { literalType, description: declarationDocumentation(target) }) };
   }
   return undefined;
+}
+
+/** 补全字段索引仅跟随注册链，类型详情由选中项再查询。 */
+export async function directTemplateNames(reader: WorkspaceReader, request: LanguageRequest, expression: TemplateExpression, options: ScriptOptions): Promise<readonly string[] | undefined> {
+  if (!/\.wxml$/i.test(request.document.uri) || expression.contexts || expression.objectLiteral || expression.event || expression.bindings.length || options.adapters?.length || request.cancellation.isCancellationRequested) return undefined;
+  const key = JSON.stringify(['completion', reader.root(request.document.uri), request.document.uri, options]);
+  const cached = reader.revision && references.get(reader.revision)?.find((item) => item.key === key);
+  if (cached && await unchanged(reader, request, cached)) return cached.names;
+  const graph = new DirectReferences(reader, request, options);
+  let names: readonly string[] | undefined;
+  for (const suffix of ['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs']) {
+    const source = await graph.source(request.document.uri.replace(/\.wxml$/i, suffix));
+    if (request.cancellation.isCancellationRequested) return undefined;
+    if (!source) continue;
+    const calls = directRegistrations(source);
+    if (calls.length === 1) names = [...await graph.names(calls[0]!.arguments[0]!) ?? []];
+    // 空集合可能来自不确定语法，交给完整语义确认。
+    if (!names?.length) names = undefined;
+    break;
+  }
+  const snapshot = graph.cache();
+  const weight = [...snapshot.documents.values()].reduce((size, document) => size + (document?.text.length ?? 0), 0);
+  if (reader.revision && !request.cancellation.isCancellationRequested && weight <= 4_000_000 && [...snapshot.dependencies].every(([uri, version]) => reader.revision!(uri) === version)) {
+    const entries = (references.get(reader.revision) ?? []).filter((item) => item.key !== key);
+    entries.push({ key, target: undefined, ...(names ? { names } : {}), ...snapshot, weight, paths: graph.paths });
+    while (entries.length > 12 || entries.reduce((size, item) => size + item.weight, 0) > 4_000_000) entries.shift();
+    references.set(reader.revision, entries);
+  }
+  return names;
 }
 
 /** 明确根字段只展开必要引用，模板传参及复杂来源保留完整语义导航。 */
@@ -308,10 +476,11 @@ export async function directTemplateDefinition(reader: WorkspaceReader, request:
     for (const path of cached.paths) reader.navigation?.record(path);
   } else {
     const graph = new DirectReferences(reader, request, options, project);
-    const target = await locate(request, selected.node.text, graph);
+    const located = await locate(request, selected.node.text, graph);
+    const target = located && { uri: located.uri, range: located.range };
     const snapshot = graph.cache();
     const weight = [...snapshot.documents.values()].reduce((size, document) => size + (document?.text.length ?? 0), 0);
-    current = { key, target, ...snapshot, weight, paths: graph.paths };
+    current = { key, target, ...snapshot, weight, paths: graph.paths, ...(located?.literalType === undefined ? {} : { literalType: located.literalType, description: located.description ?? '' }) };
     if (reader.revision && !request.cancellation.isCancellationRequested && weight <= 4_000_000 && [...current.dependencies].every(([uri, version]) => reader.revision!(uri) === version)) {
       const entries = (references.get(reader.revision) ?? []).filter((item) => item.key !== key);
       entries.push(current);
@@ -324,4 +493,50 @@ export async function directTemplateDefinition(reader: WorkspaceReader, request:
   const version = current.documents.get(current.target.uri)?.version;
   reader.navigation?.record({ code: 'symbol', message: '明确声明沿必要引用链定位，无需展开无关导入。', uri: current.target.uri });
   return [{ ...current.target, originRange: { start: expression.range.start + selected.token.getStart() - 1, end: expression.range.start + selected.token.end - 1 }, ...(version !== undefined ? { version } : {}) }];
+}
+
+/** 字面量字段的类型和原注释可直接确认，不为简单详情启动完整类型图。 */
+export async function directCompletionDetails(reader: WorkspaceReader, request: LanguageRequest, expression: TemplateExpression, name: string, options: ScriptOptions): Promise<{ detail: string; documentation: string } | undefined> {
+  if (!reader.revision || options.adapters?.length) return undefined;
+  const site = completionSite(request, expression);
+  if (!site || !ts.isIdentifier(site.node)) return undefined;
+  const current = { ...request, document: { ...request.document, text: name }, offset: name.length };
+  const selected = { ...expression, text: name, range: { start: 0, end: name.length } };
+  const definitions = await directTemplateDefinition(reader, current, selected, options);
+  if (!definitions?.length || request.cancellation.isCancellationRequested) return undefined;
+  const key = JSON.stringify([reader.root(request.document.uri), request.document.uri, name, options]);
+  const cached = references.get(reader.revision)?.find((item) => item.key === key);
+  return cached?.literalType === undefined ? undefined : { detail: cached.literalType, documentation: cached.description ?? '' };
+}
+
+/** 简单声明直接读取原注释；null 表示已确定没有说明，复杂类型继续走语义图。 */
+export async function directTemplateHover(reader: WorkspaceReader, request: LanguageRequest, expression: TemplateExpression, options: ScriptOptions): Promise<Hover | null | undefined> {
+  const definitions = await directTemplateDefinition(reader, request, expression, options);
+  if (definitions?.length !== 1 || request.cancellation.isCancellationRequested) return undefined;
+  const definition = definitions[0]!;
+  const document = await reader.read(definition.uri);
+  if (!document || document.text.length > 2_000_000 || definition.version !== undefined && document.version !== definition.version) return undefined;
+  const source = registrationSource(definition.uri, document.text);
+  let declaration: ts.Node | undefined;
+  /** 只沿目标范围寻找声明，不遍历其他函数体。 */
+  const visit = (node: ts.Node): void => {
+    if (node.end < definition.range.start || node.getStart(source) > definition.range.end) return;
+    if ('name' in node && node.name && typeof node.name === 'object') {
+      const name = node.name as ts.Node, quote = Number(ts.isStringLiteralLike(name));
+      if (name.getStart(source) + quote === definition.range.start && name.end - quote === definition.range.end) declaration = node;
+    }
+    if (!declaration) ts.forEachChild(node, visit);
+  };
+  visit(source);
+  if (!declaration || !(ts.isMethodDeclaration(declaration) || ts.isFunctionDeclaration(declaration) || ts.isVariableDeclaration(declaration) || ts.isPropertyAssignment(declaration)) || 'type' in declaration && declaration.type) return undefined;
+  const section = declaration.parent.parent;
+  if (section && ts.isPropertyAssignment(section) && (ts.isIdentifier(section.name) || ts.isStringLiteralLike(section.name)) && ['properties', 'props'].includes(section.name.text)) return undefined;
+  if ('initializer' in declaration && declaration.initializer) {
+    let initializer = declaration.initializer;
+    while (ts.isParenthesizedExpression(initializer)) initializer = initializer.expression;
+    if (ts.isAsExpression(initializer) || ts.isTypeAssertionExpression(initializer) || ts.isSatisfiesExpression(initializer)) return undefined;
+  }
+  const description = declarationDocumentation('name' in declaration && declaration.name ? declaration.name : declaration);
+  if (!description && !(ts.isMethodDeclaration(declaration) || ts.isPropertyAssignment(declaration))) return undefined;
+  return description ? { title: request.document.text.slice(definition.originRange.start, definition.originRange.end), description, range: definition.originRange } : null;
 }

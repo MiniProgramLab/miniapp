@@ -78,6 +78,10 @@ exports.run = async function run() {
     await vscode.commands.executeCommand('miniprogramlab.miniapp.switchTemplate', vscode.window.activeTextEditor.document.uri);
     assert.equal(vscode.window.activeTextEditor.document.uri.toString(), document.uri.toString(), '关联命令应切回模板');
     const resource = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(directory, 'resource-check.wxml')));
+    // 隐藏文档不启动后台检查，显示后才更新原生问题面板。
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    assert.ok(!vscode.languages.getDiagnostics(resource.uri).some((item) => item.code === 'template-resource'));
+    await vscode.window.showTextDocument(resource, { preview: false });
     /** 资源问题必须进入真实问题面板，磁盘创建后不能保留旧的缺失结果。 */
     async function resourceCount(expected) {
       const deadline = Date.now() + 5000;
@@ -90,6 +94,10 @@ exports.run = async function run() {
     }
     const missingResource = await resourceCount(1);
     assert.equal(resource.getText(missingResource[0].range), './resource-body.wxml');
+    await vscode.window.showTextDocument(document, { preview: false });
+    await resourceCount(0);
+    await vscode.window.showTextDocument(resource, { preview: false });
+    await resourceCount(1);
     await fs.writeFile(path.join(directory, 'resource-body.wxml'), '<view/>');
     await resourceCount(0);
     const moveSource = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(directory, 'move-source.wxml')));
@@ -119,6 +127,7 @@ exports.run = async function run() {
     assert.match(movedConstant.getText(), /\/reports\/renamed-page\?recordId=kept/, '运行 URL 应保留完整分包路径与查询');
     assert.match(movedNavigator.getText(), /url="\/reports\/renamed-page"/);
     const dataPath = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(directory, 'data-path.ts')));
+    await vscode.window.showTextDocument(dataPath, { preview: false });
     const dataPathPosition = dataPath.positionAt(dataPath.getText().lastIndexOf("'user.name'") + "'user.na".length);
     const dataPathItems = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider', dataPath.uri, dataPathPosition, '.');
     assert.ok(dataPathItems.items.some((item) => item.label === 'name' && item.detail?.includes('string')), 'setData 路径应显示实际字段及声明类型');
@@ -205,6 +214,7 @@ exports.run = async function run() {
     } finally { await navigationSettings.update('maxScriptFiles', originalBudget, vscode.ConfigurationTarget.Workspace); }
     /** 组件元数据须进入原生枚举、悬浮与问题面板，草稿改动即时刷新。 */
     const metadataDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(directory, 'metadata.wxml')));
+    await vscode.window.showTextDocument(metadataDocument, { preview: false });
     const metadataSettings = vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', metadataDocument.uri);
     const originalData = metadataSettings.get('customData'), originalSdk = metadataSettings.get('sdkVersion');
     try {
@@ -285,10 +295,12 @@ exports.run = async function run() {
     assert.ok(wxsHover.some((item) => item.contents.some((content) => content.value.includes('格式化文字'))));
     /** 原生参数提示、内联坐标及跨模块草稿刷新共同验收 WXS 新能力。 */
     const callTemplate = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(directory, 'wxs-calls.wxml')));
+    await vscode.window.showTextDocument(callTemplate, { preview: false });
     const templateHelp = await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider', callTemplate.uri, callTemplate.positionAt(callTemplate.getText().indexOf('utils.format(') + 'utils.format('.length));
     assert.match(templateHelp.signatures[0].label, /amount: number/);
     assert.ok(templateHelp.signatures[0].documentation.value.includes('格式化金额'));
     const callFile = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(directory, 'wxs-calls.wxs')));
+    await vscode.window.showTextDocument(callFile, { preview: false, viewColumn: vscode.ViewColumn.Beside });
     const fileHelp = await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider', callFile.uri, callFile.positionAt(callFile.getText().indexOf('tools.format(1,') + 'tools.format(1,'.length));
     assert.equal(fileHelp.activeParameter, 1);
     let callProblems = [];
@@ -402,6 +414,7 @@ exports.run = async function run() {
     assert.ok(fromScript.entries().some(([uri]) => uri.toString() === document.uri.toString()), 'TS 起点必须包含 WXML 编辑');
 
     // 事件诊断异步更新；在真实宿主等待明确结果，而不是只检查提供器注册。
+    await vscode.window.showTextDocument(document, { preview: false });
     let diagnostics = [];
     for (let attempt = 0; attempt < 30; attempt++) {
       diagnostics = vscode.languages.getDiagnostics(document.uri).filter((item) => item.message.includes('detail'));

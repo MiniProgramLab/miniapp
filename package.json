@@ -156,6 +156,10 @@
     "configuration": {
       "title": "miniapp",
       "properties": {
+        "miniprogramlab.miniapp.performance.diagnosticScope": {
+          "type": "string", "enum": ["visible", "opened"], "enumDescriptions": ["只自动检查可见编辑器，切换文件时补充检查。", "自动检查所有已打开文档。"], "default": "visible", "scope": "resource",
+          "description": "后台诊断范围；工作区检查命令始终按检查范围运行。"
+        },
         "miniprogramlab.miniapp.wxml.autoClosingTags": {
           "type": "boolean",
           "default": true,
@@ -207,6 +211,10 @@
           "scope": "resource",
           "description": "单次 WXML 脚本引用链解析的文件数量上限，包含类型声明和标准库。"
         },
+        "miniprogramlab.miniapp.wxml.maxScriptDepth": {
+          "type": "integer", "default": 12, "minimum": 0, "maximum": 64, "scope": "resource",
+          "description": "脚本依赖最大层数，入口为第零层；超限时停止展开，不基于不完整图报告确定错误。零表示只限制文件数和文本量。"
+        },
         "miniprogramlab.miniapp.wxml.maxRenameFiles": {
           "type": "integer",
           "default": 5000,
@@ -252,6 +260,10 @@
           "maximum": 2000,
           "scope": "resource",
           "description": "单次样式引用链解析的文件数量上限。"
+        },
+        "miniprogramlab.miniapp.css.maxDepth": {
+          "type": "integer", "default": 12, "minimum": 0, "maximum": 64, "scope": "resource",
+          "description": "样式导入最大层数，入口为第零层；零表示只限制文件数和文本量，超限会在导航说明中记录。"
         },
         "miniprogramlab.miniapp.wxml.adapters": {
           "type": "array",

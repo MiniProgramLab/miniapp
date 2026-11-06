@@ -10,6 +10,8 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const executable = process.env.VSCODE_EXECUTABLE ?? '/Applications/Visual Studio Code.app/Contents/MacOS/Code';
 if (!existsSync(executable)) throw new Error('未找到 VS Code，请通过 VSCODE_EXECUTABLE 指定可执行文件路径。');
 const directory = await mkdtemp(path.join(tmpdir(), 'miniapp-extension-host-'));
+/** 性能专项只调用公开编辑器 API，无需前台键盘输入。 */
+const suite = process.argv.includes('--performance') ? 'performance-host.cjs' : 'extension-host.cjs';
 
 try {
   await mkdir(path.join(directory, 'extensions'));
@@ -21,7 +23,7 @@ try {
     `--user-data-dir=${path.join(directory, 'profile')}`,
     `--extensions-dir=${path.join(directory, 'extensions')}`,
     `--extensionDevelopmentPath=${root}`,
-    `--extensionTestsPath=${path.join(root, 'tests/extension-host.cjs')}`,
+    `--extensionTestsPath=${path.join(root, 'tests', suite)}`,
     '--skip-welcome', '--skip-release-notes', '--disable-updates', '--disable-workspace-trust',
     path.join(root, 'examples/wxml'),
   ], { env: environment, stdio: 'inherit' });

@@ -62,4 +62,6 @@ export interface CssOptions {
   readonly sourceRoot?: string;
   readonly includePaths?: readonly string[];
   readonly maxFiles?: number;
+  /** 导入最大层数，零表示只限制文件和文本量。 */
+  readonly maxDepth?: number;
 }

@@ -10,6 +10,8 @@ import { componentRefactors, templateRefactors } from './refactor';
 import { provideCompletions, provideHover } from './service';
 import { provideAutoClosingTag, provideLinkedTags } from './tag-editing';
 import { clearTagCache, tagAt } from './parser';
+import { clearExpressionCache } from './expression';
+import { clearTemplateNodeCache } from './template-document';
 import { templateCodeActions, templateDiagnostics } from './checks';
 import { structureChecks } from './structure-checks';
 import { createMetadataResolver, metadataDiagnostics } from './metadata';
@@ -62,6 +64,8 @@ export function createWxmlPlugin(styles?: StyleClassResolver, scripts?: ScriptDe
     /** 声明本模块具备的能力，无需了解 VS Code 的注册方式。 */
     setup({ subscriptions }) {
       subscriptions.add({ dispose: clearTagCache });
+      subscriptions.add({ dispose: clearExpressionCache });
+      subscriptions.add({ dispose: clearTemplateNodeCache });
       subscriptions.add({ dispose: clearStructureCache });
       return {
         documentSymbols: { provide: provideSymbols },
@@ -77,6 +81,7 @@ export function createWxmlPlugin(styles?: StyleClassResolver, scripts?: ScriptDe
         diagnostics: { dependencyLanguages: ['typescript', 'javascript', 'typescriptreact', 'javascriptreact', 'json', 'jsonc', 'wxs', 'wxml'],
           /** 名称和组件事件检查共用未保存快照，错误范围按位置去重。 */
           provide: async (request: LanguageRequest) => {
+            request = { ...request, analysisScope: {} };
             const structural = structureChecks(request, undefined, reader?.navigation).diagnostics;
             if (!hasSourceDirectory(request.document.uri)) return structural;
             const names = scripts?.analyze ? await templateDiagnostics(request, scripts) : [];

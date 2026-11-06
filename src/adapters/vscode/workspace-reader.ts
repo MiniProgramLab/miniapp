@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { WorkspaceReader, WorkspaceText } from '../../api';
 import { createWorkspaceRevisions } from '../../core/workspace-revisions';
+import { createRevisionCache } from '../../core/revision-cache';
 import { createDependencyTracking } from './dependency-tracking';
 import { createNavigationTracking } from './navigation-tracking';
 
@@ -10,11 +11,22 @@ export function createWorkspaceReader(subscriptions?: vscode.Disposable[]): Work
   const pending = new Map<string, Promise<WorkspaceText | undefined>>();
   /** 文档版本相同时复用文本，弱引用允许关闭的缓冲区被回收。 */
   const snapshots = new WeakMap<vscode.TextDocument, WorkspaceText>();
+  /** 打开的文档按 URI 直接查找，避免每次路径探测遍历所有标签页。 */
+  const buffers = new Map(vscode.workspace.textDocuments.map((document) => [document.uri.toString(), document]));
   /** 解码器无需为每个文件重新创建。 */
   const decoder = new TextDecoder();
   const revisions = createWorkspaceRevisions();
   const tracking = createDependencyTracking(revisions.revision);
   const navigation = createNavigationTracking();
+  /** 磁盘快照与阴性探测按文件事件失效，各语言共享同一缓存。 */
+  const disk = createRevisionCache(tracking.observe, async (value): Promise<WorkspaceText | undefined> => {
+    try { return { text: decoder.decode(await vscode.workspace.fs.readFile(vscode.Uri.parse(value))) }; }
+    catch { return undefined; }
+  }, (value) => value?.text.length ?? 0);
+  /** 目录结构修订独立于普通内容变化，避免反复 stat。 */
+  const directories = createRevisionCache(tracking.observe, async (value) => {
+    try { return !!((await vscode.workspace.fs.stat(vscode.Uri.parse(value))).type & vscode.FileType.Directory); } catch { return false; }
+  }, () => 1, 4096);
   const changes = new vscode.EventEmitter<{ uri?: string; kind: 'content' | 'structure' | 'open' | 'close' | 'configuration' }>();
   const catalogs = new Map<string, { revision: string; files: readonly vscode.Uri[] }>();
   /** 文件结构变化才影响目录探测，普通脚本或磁盘内容只更新自身修订。 */
@@ -23,10 +35,10 @@ export function createWorkspaceReader(subscriptions?: vscode.Disposable[]): Work
   const invalidate = (): void => { revisions.invalidate(); catalogs.clear(); changes.fire({ kind: 'configuration' }); };
   if (subscriptions) {
     const watcher = vscode.workspace.createFileSystemWatcher('**/*');
-    subscriptions.push(tracking, navigation, changes, watcher, watcher.onDidChange((uri) => changed(uri)), watcher.onDidCreate((uri) => changed(uri, true)), watcher.onDidDelete((uri) => changed(uri, true)),
-      vscode.workspace.onDidChangeTextDocument((event) => changed(event.document.uri)),
-      vscode.workspace.onDidOpenTextDocument((document) => changed(document.uri, document.isDirty, 'open')), vscode.workspace.onDidCloseTextDocument((document) => changed(document.uri, document.isDirty, 'close')),
-      vscode.workspace.onDidChangeConfiguration(invalidate), vscode.workspace.onDidChangeWorkspaceFolders(invalidate));
+    subscriptions.push(tracking, navigation, disk, directories, { dispose: () => buffers.clear() }, changes, watcher, watcher.onDidChange((uri) => changed(uri)), watcher.onDidCreate((uri) => changed(uri, true)), watcher.onDidDelete((uri) => changed(uri, true)),
+      vscode.workspace.onDidChangeTextDocument((event) => { if (event.contentChanges.length) changed(event.document.uri); }),
+      vscode.workspace.onDidOpenTextDocument((document) => { buffers.set(document.uri.toString(), document); changed(document.uri, document.isDirty, 'open'); }), vscode.workspace.onDidCloseTextDocument((document) => { buffers.delete(document.uri.toString()); changed(document.uri, document.isDirty, 'close'); }),
+      vscode.workspace.onDidChangeConfiguration((event) => { if (event.affectsConfiguration('miniprogramlab.miniapp')) invalidate(); }), vscode.workspace.onDidChangeWorkspaceFolders(invalidate));
   }
   return {
     /** 没有事件生命周期时不声明缓存能力，避免外部调用者读到过期图。 */
@@ -37,6 +49,7 @@ export function createWorkspaceReader(subscriptions?: vscode.Disposable[]): Work
       const uri = vscode.Uri.parse(value);
       const prefix = uri.toString().replace(/\/?$/, '/');
       if (vscode.workspace.textDocuments.some((document) => document.uri.toString().startsWith(prefix))) return true;
+      if (subscriptions) return directories.read(uri.toString());
       try { return !!((await vscode.workspace.fs.stat(uri)).type & vscode.FileType.Directory); } catch { return false; }
     },
     /** 打开的未保存内容优先；缺失文件是正常的路径探测结果。 */
@@ -44,7 +57,7 @@ export function createWorkspaceReader(subscriptions?: vscode.Disposable[]): Work
       tracking.observe(value);
       const uri = vscode.Uri.parse(value);
       const key = uri.toString();
-      const document = vscode.workspace.textDocuments.find((item) => item.uri.toString() === key);
+      const document = subscriptions ? buffers.get(key) : vscode.workspace.textDocuments.find((item) => item.uri.toString() === key);
       if (document) {
         const previous = snapshots.get(document);
         if (previous?.version === document.version) return previous;
@@ -52,6 +65,7 @@ export function createWorkspaceReader(subscriptions?: vscode.Disposable[]): Work
         snapshots.set(document, snapshot);
         return snapshot;
       }
+      if (subscriptions) return disk.read(key);
       let reading = pending.get(key);
       if (!reading) {
         reading = Promise.resolve().then(async () => {

@@ -97,7 +97,8 @@ export async function renameScript(reader: WorkspaceReader, request: LanguageReq
       if (await readerSnapshot.read(candidate)) { roots.add(candidate); break; }
     }
   }
-  const project = new ScriptProject(readerSnapshot, request, { ...options, maxFiles: 1000 });
+  // 重命名覆盖全部消费方，只保留文件和文本预算，避免日常深度设置截断编辑。
+  const project = new ScriptProject(readerSnapshot, request, { ...options, maxFiles: 1000, maxDepth: 0 });
   const created = await project.create(first.uri, [...roots]);
   if (!created || project.cancelled) return [];
   if (project.exhausted || [...roots].some((uri) => !project.sources.has(uri))) throw new Error('脚本引用图超出解析预算，未生成不完整的重命名编辑。');

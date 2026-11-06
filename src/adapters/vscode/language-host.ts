@@ -1,3 +1,4 @@
+import { createCheckpoint } from '../../core/cooperative';
 import * as vscode from 'vscode';
 import type { CheckProvider, CodeAction, Completion, Definition, LanguageHost, LanguageRequest, LanguageResult, Logger, NavigationReport, OutlineSymbol, TextEdit, TextRange, WorkspaceDependency, WorkspaceReader } from '../../api';
 import { DisposableStore } from '../../core/disposable-store';
@@ -31,6 +32,7 @@ function toRequest(document: vscode.TextDocument, position: vscode.Position, tok
     document: { uri: document.uri.toString(), languageId: document.languageId, version: document.version, text: document.getText() },
     offset: document.offsetAt(position),
     cancellation: token,
+    checkpoint: createCheckpoint(),
   };
 }
 
@@ -142,6 +144,19 @@ export function createLanguageHost(logger: Logger, reader?: WorkspaceReader): La
   /** 仅保留当前有效注册，卸载提供器时同步移除说明入口。 */
   const navigations = new Map<string, { selector: vscode.DocumentSelector; provide: (document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) => Promise<NavigationReport['providers'][number] | undefined> }>();
   const checkers = new Map<string, CheckProvider>();
+  const deferDiagnostics = new Set<(runningOnly: boolean) => void>();
+  let interactions = 0, resumeAfter = 0;
+  /** 交互查询先让出后台检查，结束后留出短暂的界面响应时间。 */
+  const foreground = async <T>(provide: () => Promise<T>): Promise<T> => {
+    interactions++;
+    try {
+      for (const defer of deferDiagnostics) defer(true);
+      return await provide();
+    } finally {
+      interactions--; resumeAfter = Date.now() + 300;
+      if (!interactions) for (const defer of deferDiagnostics) defer(false);
+    }
+  };
   return {
     /** 每次开始检查时获取注册快照，执行期间仍核验提供器存活状态。 */
     checkProviders: () => [...checkers.values()],
@@ -344,16 +359,29 @@ export function createLanguageHost(logger: Logger, reader?: WorkspaceReader): La
           checkers.set(plugin.id, { id: plugin.id, name: plugin.displayName, languages: plugin.languages, active: () => active, provide: (request) => diagnostics.provide(request) });
           resources.add({ dispose: () => checkers.delete(plugin.id) });
           const collection = resources.add(vscode.languages.createDiagnosticCollection(plugin.id));
-          const pending = new Map<string, { source: vscode.CancellationTokenSource; timer: ReturnType<typeof setTimeout> }>();
+          const pending = new Map<string, { source: vscode.CancellationTokenSource; timer: ReturnType<typeof setTimeout>; document: vscode.TextDocument; running: boolean }>();
           const dependencies = new Map<string, readonly WorkspaceDependency[]>();
+          const versions = new Map<string, number>();
+          /** 后台只跟随可见编辑器，可通过设置恢复所有打开文档检查。 */
+          const eligible = (document: vscode.TextDocument): boolean => !document.isClosed && (vscode.workspace.getConfiguration('miniprogramlab.miniapp.performance', document.uri).get<string>('diagnosticScope', 'visible') === 'opened' || vscode.window.visibleTextEditors.some((editor) => editor.document === document));
+          /** 隐藏、关闭和卸载共同取消未完成任务。 */
+          const cancel = (uri: string): void => {
+            const item = pending.get(uri);
+            if (item) { clearTimeout(item.timer); item.source.cancel(); item.source.dispose(); pending.delete(uri); }
+          };
           /** 连续编辑合并检查，旧请求取消后不得覆盖新诊断。 */
           const schedule = (document: vscode.TextDocument): void => {
-            if (!vscode.languages.match(selector, document)) return;
+            if (!vscode.languages.match(selector, document) || !eligible(document)) return;
             const uri = document.uri.toString();
-            const previous = pending.get(uri);
-            if (previous) { clearTimeout(previous.timer); previous.source.cancel(); previous.source.dispose(); }
+            cancel(uri);
             const source = new vscode.CancellationTokenSource();
             const timer = setTimeout(async () => {
+              if (!eligible(document)) { cancel(uri); return; }
+              if (interactions || Date.now() < resumeAfter) { schedule(document); return; }
+              const task = pending.get(uri);
+              if (!task || task.source !== source) return;
+              task.running = true;
+              const version = document.version;
               const result = await invoke(document, source.token, () => active, logger, `[${plugin.id}] 语言诊断`, async () => {
                 const provide = () => diagnostics.provide(toRequest(document, new vscode.Position(0, 0), source.token));
                 return reader?.capture ? reader.capture(provide) : { value: await provide(), dependencies: [] };
@@ -363,6 +391,7 @@ export function createLanguageHost(logger: Logger, reader?: WorkspaceReader): La
                 pending.delete(uri); source.dispose(); schedule(document); return;
               }
               if (result) {
+                versions.set(uri, version);
                 if (result.dependencies.length) dependencies.set(uri, result.dependencies); else dependencies.delete(uri);
                 collection.set(document.uri, result.value.map((item) => {
                 const diagnostic = new vscode.Diagnostic(toRange(document, item.range), item.message, item.severity === 'error' ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning);
@@ -372,21 +401,37 @@ export function createLanguageHost(logger: Logger, reader?: WorkspaceReader): La
                 }));
               }
               pending.delete(uri); source.dispose();
-            }, 300);
-            pending.set(uri, { source, timer });
+            }, Math.max(300, resumeAfter - Date.now()));
+            pending.set(uri, { source, timer, document, running: false });
           };
+          /** 开始交互时取消运行中的诊断，结束后统一重设等待时间。 */
+          const defer = (runningOnly: boolean): void => { for (const task of [...pending.values()]) if (!runningOnly || task.running) schedule(task.document); };
+          deferDiagnostics.add(defer);
+          resources.add({ dispose: () => deferDiagnostics.delete(defer) });
+          resources.add(vscode.window.onDidChangeVisibleTextEditors(() => {
+            for (const document of vscode.workspace.textDocuments) {
+              const uri = document.uri.toString(), own = dependencies.get(uri);
+              if (!eligible(document)) { cancel(uri); collection.delete(document.uri); dependencies.delete(uri); versions.delete(uri); }
+              else if (!pending.has(uri) && (versions.get(uri) !== document.version || own?.some((dependency) => reader?.revision?.(dependency.uri) !== dependency.revision))) schedule(document);
+            }
+          }));
           resources.add(vscode.workspace.onDidOpenTextDocument(schedule));
           if (reader?.onDidChange) resources.add(reader.onDidChange((uri) => {
             for (const document of vscode.workspace.textDocuments) {
+              if (!eligible(document)) {
+                if (!uri) { const hidden = document.uri.toString(); cancel(hidden); collection.delete(document.uri); dependencies.delete(hidden); versions.delete(hidden); }
+                continue;
+              }
               const own = dependencies.get(document.uri.toString());
-              if (!uri || document.uri.toString() === uri || !own || own.some((dependency) => reader.revision?.(dependency.uri) !== dependency.revision)) schedule(document);
+              if (!uri || document.uri.toString() === uri || own?.some((dependency) => reader.revision?.(dependency.uri) !== dependency.revision) || !own && !pending.has(document.uri.toString())) schedule(document);
             }
           }));
           resources.add(vscode.workspace.onDidChangeTextDocument((event) => {
+            if (!event.contentChanges.length) return;
             schedule(event.document);
             if (diagnostics.dependencyLanguages?.includes(event.document.languageId)) {
               for (const document of vscode.workspace.textDocuments) {
-                if (document === event.document) continue;
+                if (document === event.document || !eligible(document)) continue;
                 const own = dependencies.get(document.uri.toString());
                 if (!own || own.some((dependency) => reader?.revision?.(dependency.uri) !== dependency.revision)) schedule(document);
               }
@@ -394,16 +439,17 @@ export function createLanguageHost(logger: Logger, reader?: WorkspaceReader): La
           }));
           resources.add(vscode.workspace.onDidCloseTextDocument((document) => {
             const uri = document.uri.toString();
-            const item = pending.get(uri);
-            if (item) { clearTimeout(item.timer); item.source.cancel(); item.source.dispose(); pending.delete(uri); }
+            cancel(uri);
             collection.delete(document.uri);
             dependencies.delete(uri);
+            versions.delete(uri);
             if (diagnostics.dependencyLanguages?.includes(document.languageId)) for (const opened of vscode.workspace.textDocuments) {
+              if (!eligible(opened)) continue;
               const own = dependencies.get(opened.uri.toString());
               if (!own || own.some((dependency) => reader?.revision?.(dependency.uri) !== dependency.revision)) schedule(opened);
             }
           }));
-          resources.add({ dispose: () => { for (const item of pending.values()) { clearTimeout(item.timer); item.source.cancel(); item.source.dispose(); } pending.clear(); dependencies.clear(); } });
+          resources.add({ dispose: () => { for (const uri of pending.keys()) cancel(uri); dependencies.clear(); versions.clear(); } });
           for (const document of vscode.workspace.textDocuments) schedule(document);
         }
         const definition = features.definition;
@@ -431,23 +477,32 @@ export function createLanguageHost(logger: Logger, reader?: WorkspaceReader): La
           resources.add(vscode.languages.registerDefinitionProvider(selector, {
             /** 解析与异步目标转换共同受取消、版本和卸载保护。 */
             async provideDefinition(document, position, token) {
-              return invoke(document, token, () => active, logger, `[${plugin.id}] 定义跳转`, async () => {
+              return foreground(() => invoke(document, token, () => active, logger, `[${plugin.id}] 定义跳转`, async () => {
                 const result = await definition.provide(toRequest(document, position, token));
                 if (token.isCancellationRequested || !active) return [];
                 const links = await Promise.all(result.map((item) => toDefinition(document, item)));
                 return links.filter((item): item is vscode.DefinitionLink => item !== undefined);
-              });
+              }));
             },
           }));
         }
         const completion = features.completion;
         if (completion) {
+          const details = new WeakMap<vscode.CompletionItem, { suggestion: Completion; document: vscode.TextDocument; version: number }>();
           resources.add(vscode.languages.registerCompletionItemProvider(selector, {
             /** 仅在请求仍有效时转换语言插件结果。 */
             async provideCompletionItems(document, position, token) {
-              const items = await invoke(document, token, () => active, logger, `[${plugin.id}] 补全`,
-                () => completion.provide(toRequest(document, position, token)));
-              return items?.map((item) => toCompletion(document, item));
+              const items = await foreground(() => invoke(document, token, () => active, logger, `[${plugin.id}] 补全`,
+                () => completion.provide({ ...toRequest(document, position, token), deferCompletionDetails: true })));
+              return items?.map((suggestion) => { const item = toCompletion(document, suggestion); if (suggestion.resolve) details.set(item, { suggestion, document, version: document.version }); return item; });
+            },
+            /** 详情继续遵守取消、草稿版本和插件卸载保护。 */
+            async resolveCompletionItem(item, token) {
+              const cached = details.get(item);
+              if (!cached || cached.document.version !== cached.version || cached.document.isClosed) return item;
+              const result = await foreground(() => invoke(cached.document, token, () => active, logger, `[${plugin.id}] 补全说明`, () => cached.suggestion.resolve!(token)));
+              if (result) { item.detail = result.detail; item.documentation = toMarkdown(result.documentation); }
+              return item;
             },
           }, ...completion.triggerCharacters));
         }
@@ -456,8 +511,8 @@ export function createLanguageHost(logger: Logger, reader?: WorkspaceReader): La
           resources.add(vscode.languages.registerHoverProvider(selector, {
             /** 悬浮内容省略空标题，统一使用不受信任的普通文本渲染。 */
             async provideHover(document, position, token) {
-              const result = await invoke(document, token, () => active, logger, `[${plugin.id}] 悬浮`,
-                () => hover.provide(toRequest(document, position, token)));
+              const result = await foreground(() => invoke(document, token, () => active, logger, `[${plugin.id}] 悬浮`,
+                () => hover.provide(toRequest(document, position, token))));
               return result ? new vscode.Hover(toMarkdown([result.title + (result.type ? ': ' + result.type : ''), result.description].filter(Boolean).join('\n\n')), toRange(document, result.range)) : undefined;
             },
           }));

@@ -69,6 +69,13 @@ test('Vite 配置工厂、fileURLToPath 和数组别名可以导航函数及导�
   assert.deepEqual(await fixture({ ...files, 'src/pages/index.ts': `import {fetchTitle} from '@logic/mo|del';` }, 'src/pages/index.ts').definitions('script'), [{ file: 'domain/model.ts', text: '' }]);
 });
 
+test('模块字符串按需导航保留 require、动态导入与 TS 导入赋值', async () => {
+  for (const script of [`const logic=require('@logic/mo|del');`, `const logic=import('@logic/mo|del');`, `import logic = require('@logic/mo|del');`]) {
+    const graph = fixture({ 'webpack.config.js': `module.exports={resolve:{alias:{'@logic':'domain'}}}`, 'domain/model.ts': 'export const value=1;', 'src/pages/index.ts': script }, 'src/pages/index.ts');
+    assert.deepEqual(await graph.definitions('script'), [{ file: 'domain/model.ts', text: '' }]);
+  }
+});
+
 test('本地共享配置、对象展开和 merge 不丢失别名或复制规则', async () => {
   const graph = fixture({ ...copiedComponent, 'webpack.config.js': `import common from './build/common';import {merge} from 'webpack-merge';export default merge(common,{mode:'development'})`, 'build/common.js': `const path=require('path');const Copy=require('copy-webpack-plugin'); const aliases={'@domain':path.resolve(__dirname,'../domain')}; module.exports={resolve:{alias:{...aliases}},output:{path:path.resolve(__dirname,'../dist')},plugins:[new Copy([{from:'vendor/widgets',to:'external/ui'}])]}` });
   assert.deepEqual(await graph.definitions('component'), [{ file: 'vendor/widgets/popup/index.js', text: 'round' }]);

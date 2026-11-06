@@ -15,6 +15,9 @@ export interface ScriptDefinition extends Definition {
   readonly type?: string;
 }
 
+/** 同一 Program 复用只读页面成员，模板作用域与取消信号仍按请求建立。 */
+const pageContexts = new WeakMap<ts.Program, { readonly entry: ts.SourceFile; readonly roots: ReadonlyMap<string, Value[]>; readonly registrations: readonly Value[] }>();
+
 /** 确定光标引用；data 字段名导航到绑定表达式，其余对象键及普通字符串跳过。 */
 export function reference(source: ts.SourceFile, offset: number, objectLiteral = false): { node: ts.Node; token: ts.Node } | undefined {
   let token: ts.Node | undefined;
@@ -67,10 +70,15 @@ export async function queryContext(project: ScriptProject, request: LanguageRequ
   const program = await project.create();
   if (!program || project.cancelled) return undefined;
   const values = new Values(program.program.getTypeChecker(), () => project.cancelled, (name, from) => project.module(name, from), project.adapters);
-  const roots = new Map<string, Value[]>();
-  const registrations = values.registration(program.entry);
-  for (const registration of registrations) {
-    for (const [name, items] of values.context(registration)) roots.set(name, [...(roots.get(name) ?? []), ...items]);
+  const cached = pageContexts.get(program.program);
+  const reusable = cached?.entry === program.entry ? cached : undefined;
+  const roots = new Map<string, Value[]>(reusable?.roots);
+  const registrations = reusable?.registrations ?? values.registration(program.entry);
+  if (!reusable) {
+    for (const registration of registrations) {
+      for (const [name, items] of values.context(registration)) roots.set(name, [...(roots.get(name) ?? []), ...items]);
+    }
+    if (!project.cancelled && !values.exhausted && roots.size <= 4096) pageContexts.set(program.program, { entry: program.entry, roots: new Map(roots), registrations });
   }
   const localDefinitions = new Map<string, Omit<Definition, 'originRange'>>();
   const dataReferences = new Map<string, Omit<Definition, 'originRange'>>();
@@ -100,7 +108,7 @@ export async function queryContext(project: ScriptProject, request: LanguageRequ
 }
 
 /** 在一次请求内组合项目上下文、模板局部绑定和原始声明位置。 */
-export async function query(project: ScriptProject, request: LanguageRequest, expression: TemplateExpression, scopes?: readonly TemplateScope[], hover = false, rename = false): Promise<readonly ScriptDefinition[]> {
+export async function query(project: ScriptProject, request: LanguageRequest, expression: TemplateExpression, scopes?: readonly TemplateScope[], hover = false, rename = false, includeSignature = false): Promise<readonly ScriptDefinition[]> {
   const prefix = expression.objectLiteral ? 2 : 1;
   const source = parse(expression.objectLiteral ? `{${expression.text}}` : expression.text);
   const selected = reference(source, request.offset - expression.range.start + prefix, expression.objectLiteral);
@@ -140,9 +148,9 @@ export async function query(project: ScriptProject, request: LanguageRequest, ex
     const range = { start: declaration.getStart(file) + quote, end: declaration.getEnd() - quote };
     project.explainDefinition(file.fileName);
     const description = hover ? declarationDocumentation(declaration) || declarationDocumentation(candidate.declaration ?? candidate.node) : '';
-    const handler = signature(values.checker, item.node);
+    const handler = includeSignature ? signature(values.checker, item.node) : undefined;
     const type = hover && (item.runtimeType ?? item.type);
-    result.set(`${file.fileName}:${range.start}:${range.end}`, { uri: file.fileName, range, originRange, ...(handler ? { signature: handler } : {}), ...(description ? { description } : {}), ...(type ? { type: values.checker.typeToString(type, item.node, ts.TypeFormatFlags.NoTruncation) } : {}), ...(document.version === undefined ? {} : { version: document.version }) });
+    result.set(`${file.fileName}:${range.start}:${range.end}`, { uri: file.fileName, range, originRange, ...(handler ? { signature: handler } : {}), ...(description ? { description } : {}), ...(type ? { type: values.checker.typeToString(type, item.node) } : {}), ...(document.version === undefined ? {} : { version: document.version }) });
   }
   if (!result.size) {
     const name = rootName(selected.node);

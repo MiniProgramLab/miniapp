@@ -1,11 +1,12 @@
-import type { LanguageRequest, ScriptDefinitionResolver, TemplateExpression, WorkspaceReader } from '../../api';
+import ts from 'typescript';
+import type { Completion, LanguageRequest, ScriptDefinitionResolver, TemplateExpression, WorkspaceReader } from '../../api';
 import { ScriptProject } from './project';
 import type { ScriptOptions } from './project';
 import { query, queryContext } from './query';
 import type { ScriptDefinition } from './query';
 import { queryWxs } from './wxs';
 import { renameScript, scriptSymbols } from './rename';
-import { completeTemplate } from './completion';
+import { completeTemplate, completionSite } from './completion';
 import { analyzeTemplate, valueType } from './analysis';
 import { evaluate } from './template-values';
 import { signatureWxs, checkWxsCalls } from './wxs-calls';
@@ -16,17 +17,28 @@ import { componentExtractionScope, extractComponentParent } from './refactor';
 import { datasetAccess, datasetUses } from './dataset';
 import { instanceAccess, instanceQueries, instanceTemplates } from './instances';
 import { routeQueries, routeManifest, pageQuery } from './routes';
-import { directTemplateDefinition } from './direct-definition';
+import { directRegistrations, directTemplateDefinition, directTemplateHover, directTemplateNames, directCompletionDetails, registrationSource } from './direct-definition';
 
 /** 提供独立脚本语义端口，语言消费者无需依赖 TypeScript 或 VS Code。 */
 export function createScriptResolver(reader: WorkspaceReader, options: (uri: string) => ScriptOptions = () => ({})): ScriptDefinitionResolver {
+  const batches = new WeakMap<object, Map<string, ScriptProject>>();
+  /** 一次诊断中的多条表达式共用脚本图，不影响后续独立请求的快照。 */
+  const projectFor = (request: LanguageRequest, uri = request.document.uri): ScriptProject => {
+    const create = () => new ScriptProject(reader, uri === request.document.uri ? request : { ...request, document: { ...request.document, uri } }, options(uri));
+    if (!request.analysisScope) return create();
+    const projects = batches.get(request.analysisScope) ?? new Map<string, ScriptProject>();
+    batches.set(request.analysisScope, projects);
+    let project = projects.get(uri);
+    if (!project) { project = create(); projects.set(uri, project); }
+    return project;
+  };
   /** 导航和悬浮共用声明链；同一请求的多个模板调用点共享页面 Program。 */
-  async function definitions(request: LanguageRequest, expression: TemplateExpression, hover = false, rename = false): Promise<readonly ScriptDefinition[]> {
+  async function definitions(request: LanguageRequest, expression: TemplateExpression, hover = false, rename = false, includeSignature = false): Promise<readonly ScriptDefinition[]> {
     const wxs = await queryWxs(reader, request, expression, options(request.document.uri), rename);
     if (wxs) return wxs.definitions;
     const projects = new Map<string, ScriptProject>();
-    if (!hover && !rename && !options(request.document.uri).adapters?.length) {
-      const project = new ScriptProject(reader, request, options(request.document.uri));
+    if (!hover && !rename && !includeSignature && !options(request.document.uri).adapters?.length) {
+      const project = projectFor(request);
       projects.set(request.document.uri, project);
       const direct = await directTemplateDefinition(reader, request, expression, options(request.document.uri), project);
       if (direct) return direct;
@@ -37,17 +49,31 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
       if (request.cancellation.isCancellationRequested) return [];
       let project = projects.get(context.uri);
       if (!project) {
-        const source = { ...request, document: { ...request.document, uri: context.uri } };
-        project = new ScriptProject(reader, source, options(context.uri));
+        project = projectFor(request, context.uri);
         projects.set(context.uri, project);
       }
-      for (const definition of await query(project, request, expression, context.scopes, hover, rename)) {
+      for (const definition of await query(project, request, expression, context.scopes, hover, rename, includeSignature)) {
         result.set(`${definition.uri}:${definition.range.start}:${definition.range.end}`, definition);
       }
     }
     return [...result.values()];
   }
   return {
+    /** 已注册页面的空提示属于本页结论，不触发无关模板反查。 */
+    async hasContext(request) {
+      if (/\.wxml$/i.test(request.document.uri)) for (const suffix of ['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs']) {
+        if (request.cancellation.isCancellationRequested) return false;
+        const uri = request.document.uri.replace(/\.wxml$/i, suffix);
+        const document = await reader.read(uri);
+        if (document) {
+          if (document.text.length <= 2_000_000 && directRegistrations(registrationSource(uri, document.text)).length) return true;
+          break;
+        }
+      }
+      const project = projectFor(request);
+      const context = await queryContext(project, request, { text: '', range: { start: 0, end: 0 }, bindings: [] });
+      return !!context?.registrations.length && !project.cancelled;
+    },
     /** 依赖名称仅做语法解析，不为提取模板建立整个页面类型图。 */
     expressionNames,
     /** 调用提示只解析实际 WXS 模块及其导出链。 */
@@ -81,7 +107,7 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
       const contexts = expression.contexts ?? [{ uri: request.document.uri, scopes: undefined }];
       const results: import('../../api').ExpressionInfo[] = [];
       for (const context of contexts) {
-        const project = new ScriptProject(reader, { ...request, document: { ...request.document, uri: context.uri } }, options(context.uri));
+        const project = projectFor(request, context.uri);
         const scope = await queryContext(project, request, expression, context.scopes);
         const result = await analyzeTemplate(project, request, expression, context.scopes, scope);
         const calls = expression.modules?.length ? await checkWxsCalls(reader, request, expression, options(request.document.uri), scope ? (argument) => valueType(scope.values, evaluate(argument, scope.roots, scope.values, { uri: request.document.uri, offset: expression.range.start, prefix: expression.objectLiteral ? 2 : 1 })) : undefined) : [];
@@ -105,20 +131,40 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
     async complete(request, expression) {
       const wxs = await queryWxs(reader, request, expression, options(request.document.uri));
       if (wxs) return wxs.completions;
-      const result = new Map<string, import('../../api').Completion>();
+      const result = new Map<string, Completion>();
       const contexts = expression.contexts ?? [{ uri: request.document.uri, scopes: undefined }];
+      /** 选中项重新核对快照，只计算对应名称的类型和说明。 */
+      const withDetails = (items: readonly Completion[]): readonly Completion[] => !request.deferCompletionDetails ? items : items.map((item) => ({ ...item, resolve: async (cancellation) => {
+        if (cancellation.isCancellationRequested) return undefined;
+        const current = { ...request, cancellation, deferCompletionDetails: false };
+        const direct = await directCompletionDetails(reader, current, expression, item.label, options(request.document.uri));
+        if (direct) return direct;
+        const selected: Completion[] = [];
+        for (const context of contexts) selected.push(...await completeTemplate(projectFor(current, context.uri), current, expression, context.scopes, item.label));
+        if (cancellation.isCancellationRequested || !selected.length) return undefined;
+        return { detail: [...new Set(selected.map((entry) => entry.detail))].join(' | '), documentation: [...new Set(selected.map((entry) => entry.documentation).filter(Boolean))].join('\n') };
+      } }));
+      const site = request.deferCompletionDetails && completionSite(request, expression);
+      if (site && ts.isIdentifier(site.node)) {
+        const names = await directTemplateNames(reader, request, expression, options(request.document.uri));
+        if (names) {
+          const candidates: Completion[] = names.filter((name) => name.startsWith(site.prefix) && /^[$\p{ID_Start}_][$\p{ID_Continue}]*$/u.test(name)).map((name) => ({ label: name, kind: 'value', detail: '模板字段', documentation: '', insertText: name, range: site.range }));
+          for (const module of expression.modules ?? []) if (module.name.startsWith(site.prefix)) candidates.push({ label: module.name, kind: 'value', detail: 'WXS 模块', documentation: '当前模板声明的 WXS 模块。', insertText: module.name, range: site.range });
+          return withDetails(candidates);
+        }
+      }
       for (const context of contexts) {
         if (request.cancellation.isCancellationRequested) return [];
-        const project = new ScriptProject(reader, { ...request, document: { ...request.document, uri: context.uri } }, options(context.uri));
+        const project = projectFor(request, context.uri);
         for (const item of await completeTemplate(project, request, expression, context.scopes)) {
           const previous = result.get(item.label);
           result.set(item.label, previous ? { ...previous, detail: [...new Set([previous.detail, item.detail])].join(' | '), documentation: [...new Set([previous.documentation, item.documentation])].filter(Boolean).join('\n') } : item);
         }
       }
-      return [...result.values()];
+      return withDetails([...result.values()]);
     },
     /** 只返回已解析的函数实现签名。 */
-    async signature(request, expression) { return (await definitions(request, expression)).flatMap((item) => item.signature ? [item.signature] : []); },
+    async signature(request, expression) { return (await definitions(request, expression, false, false, true)).flatMap((item) => item.signature ? [item.signature] : []); },
     /** 脚本中的普通名称及静态事件名均可作为重命名起点。 */
     scriptSymbols: (request) => scriptSymbols(reader, request, options(request.document.uri)),
     /** 原生脚本重命名与小程序静态字段使用同一读取快照。 */
@@ -131,6 +177,10 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
     async hover(request, expression) {
       const wxs = await queryWxs(reader, request, expression, options(request.document.uri));
       if (wxs) return wxs.hover;
+      if (!options(request.document.uri).adapters?.length) {
+        const direct = await directTemplateHover(reader, request, expression, options(request.document.uri));
+        if (direct !== undefined) return direct ?? undefined;
+      }
       const result = await definitions(request, expression, true);
       const descriptions = [...new Set(result.map((definition) => definition.description).filter((description): description is string => !!description))];
       const types = [...new Set(result.map((definition) => definition.type).filter((type): type is string => !!type))];

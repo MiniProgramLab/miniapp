@@ -9,6 +9,7 @@ export class StyleProject {
   private readonly indexes = new Map<string, StyleIndex>();
   private readonly edges = new Map<ImportEdge, Promise<readonly StyleIndex[]>>();
   private readonly maxFiles: number;
+  private readonly maxDepth: number;
   private readonly workspaceRoot: string;
   private sourceRoot: Promise<string> | undefined;
   private bytes = 0;
@@ -19,6 +20,7 @@ export class StyleProject {
   constructor(private readonly reader: WorkspaceReader, readonly request: LanguageRequest, private readonly options: CssOptions = {}) {
     this.files = reader.fileResolver?.(request.document.uri, request.cancellation);
     this.maxFiles = Number.isFinite(options.maxFiles) ? Math.max(1, Math.min(2000, options.maxFiles!)) : 300;
+    this.maxDepth = Number.isFinite(options.maxDepth) ? Math.max(0, Math.min(64, Math.floor(options.maxDepth!))) : 12;
     this.workspaceRoot = reader.root(request.document.uri) ?? parentUri(request.document.uri);
     this.texts.set(request.document.uri, Promise.resolve({ text: request.document.text, version: request.document.version }));
   }
@@ -26,6 +28,14 @@ export class StyleProject {
   /** 请求取消后不再访问文件或生成结果。 */
   private get cancelled(): boolean {
     return this.request.cancellation.isCancellationRequested;
+  }
+
+  /** 深层导入停止前记录原因，提取功能据此拒绝不完整编辑。 */
+  private follow(index: StyleIndex, depth: number): boolean {
+    if (!this.maxDepth || depth < this.maxDepth || !index.imports.length) return true;
+    this.exhausted = true;
+    this.reader.navigation?.record({ code: 'budget', message: `样式引用链达到 ${this.maxDepth} 层上限，可调整 css.maxDepth。`, uri: index.uri });
+    return false;
   }
 
   /** 对缺失文件同样缓存，限制路径探测次数与文本总量。 */
@@ -148,7 +158,7 @@ export class StyleProject {
     const base = this.request.document.uri.replace(/\.wxml$/i, '');
     const visited = new Set<string>();
     /** 相同文件允许同时由全局和局部导入，二次访问升级归属而不重复解析。 */
-    const visit = async (index: StyleIndex, local: boolean): Promise<void> => {
+    const visit = async (index: StyleIndex, local: boolean, depth = 0): Promise<void> => {
       const key = index.uri + ':' + local;
       if (visited.has(key) || this.cancelled) return;
       visited.add(key);
@@ -164,6 +174,7 @@ export class StyleProject {
       if (balance.length) issues.add(`样式 ${index.uri} 包含未闭合的结构。`);
       files.set(index.uri, { uri: index.uri, text: index.text, ...(index.version === undefined ? {} : { version: index.version }), selectors, local: local || files.get(index.uri)?.local === true });
       for (const symbol of index.symbols) if (symbol.kind === 'class') classes.add(symbol.name);
+      if (!this.follow(index, depth)) return;
       for (const edge of index.imports) {
         // Sass 内置函数模块不加载用户样式；meta 的样式加载仍需单独分析。
         if (index.dialect === 'scss' && edge.kind !== 'import' && /^sass:(?:math|string|color|list|map|selector)$/.test(edge.reference)) continue;
@@ -172,7 +183,7 @@ export class StyleProject {
         if (/^(?:[\w+.-]+:|\/\/)/.test(edge.reference)) { issues.add(`样式 ${index.uri} 引用外部样式，无法完整分析作用域。`); continue; }
         const targets = await this.targets(index, edge);
         if (!targets.length) issues.add(`样式 ${index.uri} 的导入 ${edge.reference} 没有找到完整源码。`);
-        for (const target of targets) await visit(target, local);
+        for (const target of targets) await visit(target, local, depth + 1);
       }
     };
     for (const root of await this.templateRoots(includeGlobal)) await visit(root, root.uri.replace(/\.(?:wxss|scss|less|css)$/i, '') === base);
@@ -189,14 +200,20 @@ export class StyleProject {
   /** 导航与补全共用静态导入遍历、取消信号及文件预算。 */
   private async visit(roots: readonly StyleIndex[], inspect: (index: StyleIndex) => void): Promise<void> {
     const visited = new Set<string>();
-    /** 每个文件只访问一次，循环导入不会无限递归。 */
-    const visit = async (index: StyleIndex): Promise<void> => {
-      if (visited.has(index.uri) || visited.size >= this.maxFiles || this.cancelled) return;
+    const queue = roots.map((index) => ({ index, depth: 0 }));
+    const queued = new Set(roots.map((index) => index.uri));
+    // 按层访问，多条导入路径取最短距离，循环依赖只处理一次。
+    for (let offset = 0; offset < queue.length && !this.cancelled; offset++) {
+      const { index, depth } = queue[offset]!;
+      if (visited.has(index.uri)) continue;
+      if (visited.size >= this.maxFiles) { this.exhausted = true; return; }
       visited.add(index.uri);
       inspect(index);
-      for (const edge of index.imports) for (const target of await this.targets(index, edge)) await visit(target);
-    };
-    for (const root of roots) await visit(root);
+      if (!this.follow(index, depth)) continue;
+      for (const edge of index.imports) for (const target of await this.targets(index, edge)) if (!queued.has(target.uri)) {
+        queued.add(target.uri); queue.push({ index: target, depth: depth + 1 });
+      }
+    }
   }
 
   /** 类和 CSS 自定义属性跨所有静态导入可见，多处声明保留全部候选。 */
@@ -223,7 +240,7 @@ export class StyleProject {
   }
 
   /** 查询模块出口，@use 的成员不会自动变为当前模块的公开成员。 */
-  private async exported(index: StyleIndex, reference: SymbolReference, seen: Set<string>, publicOnly: boolean): Promise<readonly Definition[]> {
+  private async exported(index: StyleIndex, reference: SymbolReference, seen: Set<string>, publicOnly: boolean, depth = 1): Promise<readonly Definition[]> {
     const key = `${index.uri}:${reference.kind}:${reference.name}:${publicOnly}`;
     if (seen.has(key) || seen.size >= this.maxFiles || this.cancelled || publicOnly && /^[_-]/.test(reference.name)) return [];
     seen.add(key);
@@ -232,20 +249,22 @@ export class StyleProject {
     const declarations = [...local.map((symbol) => ({ offset: symbol.range.start, symbol })), ...imported.map((edge) => ({ offset: edge.range.start, edge }))].sort((left, right) => right.offset - left.offset);
     for (const declaration of declarations) {
       if ('symbol' in declaration) return [this.definition(index, declaration.symbol, reference.range)];
+      if (!this.follow(index, depth)) return [];
       const found: Definition[] = [];
-      for (const target of await this.targets(index, declaration.edge)) found.push(...await this.exported(target, reference, seen, publicOnly));
+      for (const target of await this.targets(index, declaration.edge)) found.push(...await this.exported(target, reference, seen, publicOnly, depth + 1));
       if (found.length) return found;
     }
     const result: Definition[] = [];
     for (const edge of [...index.imports].reverse()) {
       if (edge.kind !== 'forward' || edge.scope.start !== 0) continue;
+      if (!this.follow(index, depth)) return [];
       if (edge.prefix && !reference.name.startsWith(symbolName(edge.prefix, index.dialect))) continue;
       // show/hide 针对转发后的公开名称匹配，随后再去掉转发前缀。
       const member = `${reference.kind === 'variable' ? '$' : ''}${reference.name}`;
       if (edge.hide?.includes(member) || edge.show && !edge.show.includes(member)) continue;
       const name = edge.prefix ? reference.name.slice(edge.prefix.length) : reference.name;
       for (const target of await this.targets(index, edge)) {
-        result.push(...await this.exported(target, { ...reference, name }, seen, publicOnly || edge.kind === 'forward'));
+        result.push(...await this.exported(target, { ...reference, name }, seen, publicOnly || edge.kind === 'forward', depth + 1));
       }
     }
     return result;

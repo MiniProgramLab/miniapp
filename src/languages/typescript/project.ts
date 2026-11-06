@@ -1,10 +1,12 @@
 import ts from 'typescript';
-import type { LanguageRequest, ProjectFileResolver, ScriptAdapter, WorkspaceDependency, WorkspaceReader, WorkspaceText } from '../../api';
+import type { Cancellation, LanguageRequest, ProjectFileResolver, ScriptAdapter, WorkspaceDependency, WorkspaceReader, WorkspaceText } from '../../api';
 
 /** 脚本解析预算与随扩展交付的标准库位置。 */
 export interface ScriptOptions {
   readonly adapters?: readonly ScriptAdapter[];
   readonly maxFiles?: number;
+  /** 引用链最大层数，零表示仅受文件和文本预算限制。 */
+  readonly maxDepth?: number;
   readonly libraryUri?: string;
   /** 组件导航优先解析运行时入口，排除只提供类型的包入口。 */
   readonly preferImplementations?: boolean;
@@ -33,7 +35,7 @@ function moduleReference(target: string, from: string): string {
   return '../'.repeat(left.length) + (left.length ? '' : './') + right.join('/');
 }
 
-/** 只缓存完整语义图，依赖修订由宿主提供，取消的请求永不进入缓存。 */
+/** 图缓存保留完整性标记，取消或读取期间变化的结果不进入缓存。 */
 interface CachedProject {
   readonly key: string;
   readonly input: string | undefined;
@@ -45,10 +47,24 @@ interface CachedProject {
   readonly options: ts.CompilerOptions;
   readonly program: { program: ts.Program; entry: ts.SourceFile };
   readonly weight: number;
+  readonly exhausted: boolean;
 }
 
-/** 同一宿主的短期图最多保留四份、八百万字符，关闭工作区后可整体回收。 */
+/** 最多保留八份图、两千四百万字符，容纳大型页面并限制常驻内存。 */
 const projectCaches = new WeakMap<NonNullable<WorkspaceReader['revision']>, CachedProject[]>();
+
+/** 同一读取器的并发交互共享建图，仅在全部调用者取消后停止。 */
+const pendingProjects = new WeakMap<WorkspaceReader, Map<string, { readonly input: string | undefined; readonly callers: Set<Cancellation>; readonly promise: Promise<ScriptProject> }>>();
+
+/** 模块边单独按依赖修订复用，页面内容变化不重复探测未变化的导入。 */
+interface CachedModule {
+  readonly target: string | undefined;
+  readonly module: ts.ResolvedModuleFull | undefined;
+  readonly mapped: boolean;
+  readonly ambient: boolean;
+  readonly dependencies: ReadonlyMap<string, string>;
+}
+const moduleCaches = new WeakMap<NonNullable<WorkspaceReader['revision']>, { entries: Map<string, CachedModule>; dependencies: number }>();
 
 /** 只读脚本图将异步文件端口转换为 TypeScript 的同步内存宿主。 */
 export class ScriptProject {
@@ -59,6 +75,9 @@ export class ScriptProject {
   private readonly pendingDirectories = new Set<string>();
   private readonly directories = new Map<string, boolean>();
   private readonly maxFiles: number;
+  private readonly maxDepth: number;
+  private previousSources: ReadonlyMap<string, ts.SourceFile> | undefined;
+  private entryImports: { uri: string; names: ReadonlySet<string> } | undefined;
   private readonly root: string;
   private bytes = 0;
   private options: ts.CompilerOptions = {};
@@ -71,14 +90,17 @@ export class ScriptProject {
   private readonly ambientRoots = new Set<string>();
   private ambientModules: Map<string, string> | undefined;
   private readonly revisions = new Map<string, string>();
+  private configRevisions = new Map<string, string>();
+  private readonly observations = new Set<Map<string, string>>();
   /** 重命名必须知道引用图是否完整，不能静默提交部分编辑。 */
   exhausted = false;
 
   /** 请求级缓存优先使用模板快照，不读取或执行项目代码。 */
-  constructor(private readonly reader: WorkspaceReader, readonly request: LanguageRequest, private readonly settings: ScriptOptions) {
+  constructor(private readonly reader: WorkspaceReader, readonly request: LanguageRequest, private readonly settings: ScriptOptions, private readonly shared = false) {
     this.files = reader.fileResolver?.(request.document.uri, request.cancellation);
     this.documents.set(request.document.uri, { text: request.document.text, version: request.document.version });
     this.maxFiles = Number.isFinite(settings.maxFiles) ? Math.max(1, Math.min(1000, settings.maxFiles!)) : 400;
+    this.maxDepth = Number.isFinite(settings.maxDepth) ? Math.max(0, Math.min(64, Math.floor(settings.maxDepth!))) : 12;
     this.root = reader.root(request.document.uri) ?? directory(request.document.uri);
   }
 
@@ -143,6 +165,7 @@ export class ScriptProject {
   private async read(uri: string): Promise<WorkspaceText | undefined> {
     uri = canonical(uri);
     if (this.cancelled) return undefined;
+    this.observe(uri);
     if (this.documents.has(uri)) return this.documents.get(uri);
     if (this.reader.revision) this.revisions.set(uri, this.reader.revision(uri));
     if (this.documents.size >= this.maxFiles * 24 + 128) { this.exhausted = true; return undefined; }
@@ -161,6 +184,7 @@ export class ScriptProject {
   /** 同步宿主仅访问内存，未知路径交由下一轮异步探测。 */
   private text(uri: string): string | undefined {
     uri = canonical(uri);
+    this.observe(uri);
     if (!this.documents.has(uri)) {
       if (this.pending.size + this.documents.size < this.maxFiles * 24 + 128) this.pending.add(uri);
       else this.exhausted = true;
@@ -172,6 +196,7 @@ export class ScriptProject {
   private directory(uri: string): boolean {
     if (!this.reader.directory) return true;
     uri = canonical(uri);
+    this.observe(uri);
     const known = this.directories.get(uri);
     if (known !== undefined) return known;
     if (this.directories.size + this.pendingDirectories.size >= this.maxFiles * 8 + 128) { this.exhausted = true; return false; }
@@ -235,10 +260,53 @@ export class ScriptProject {
       allowImportingTsExtensions: true, skipLibCheck: true,
       ...(this.settings.preferImplementations ? { noDtsResolution: true, maxNodeModuleJsDepth: 100 } : {}),
     };
+    this.configRevisions = new Map(this.revisions);
+    this.configRevisions.delete(entry); this.configRevisions.delete(this.request.document.uri);
+  }
+
+  /** 内存探测也登记原始修订，缓存不能漏掉缺失路径和目录结构。 */
+  private observe(uri: string): void {
+    if (this.observations.size && this.reader.revision) {
+      const revision = this.revisions.get(uri) ?? this.reader.revision(uri);
+      for (const dependencies of this.observations) dependencies.set(uri, revision);
+    }
+  }
+
+  /** 模块缓存只复用路径结论，源码内容仍由当前图重新核对。 */
+  private async resolve(reference: string, from: string, ambient = true): Promise<string | undefined> {
+    const revision = this.reader.revision;
+    if (!revision) return this.resolveUncached(reference, from, ambient);
+    const key = JSON.stringify([this.root, from, reference, this.options, ambient, this.mapped.has(from)]);
+    const state = moduleCaches.get(revision) ?? { entries: new Map<string, CachedModule>(), dependencies: 0 };
+    moduleCaches.set(revision, state);
+    const cached = state.entries.get(key);
+    if (cached && [...cached.dependencies].every(([uri, version]) => revision(uri) === version)) {
+      for (const [uri, version] of cached.dependencies) this.revisions.set(uri, version);
+      if (cached.module) this.resolutions.set(`${from}\0${reference}`, cached.module);
+      if (cached.target && cached.mapped) this.mapped.add(cached.target);
+      if (cached.target && cached.ambient) this.ambientRoots.add(cached.target);
+      state.entries.delete(key); state.entries.set(key, cached);
+      return cached.target;
+    }
+    const dependencies = new Map(this.configRevisions);
+    this.observations.add(dependencies);
+    try {
+      const target = await this.resolveUncached(reference, from, ambient);
+      for (const item of this.files?.dependencies ?? []) dependencies.set(item.uri, item.revision);
+      if (!this.cancelled && !this.exhausted && [...dependencies].every(([uri, version]) => revision(uri) === version)) {
+        state.dependencies += dependencies.size - (state.entries.get(key)?.dependencies.size ?? 0);
+        state.entries.delete(key); state.entries.set(key, { target, module: this.resolutions.get(`${from}\0${reference}`), mapped: !!target && this.mapped.has(target), ambient: !!target && this.ambientRoots.has(target), dependencies });
+        while (state.entries.size > 4096 || state.dependencies > 200_000) {
+          const oldest = state.entries.keys().next().value!;
+          state.dependencies -= state.entries.get(oldest)!.dependencies.size; state.entries.delete(oldest);
+        }
+      }
+      return target;
+    } finally { this.observations.delete(dependencies); }
   }
 
   /** 使用官方解析器处理相对路径、路径映射、目录入口和包声明。 */
-  private async resolve(reference: string, from: string, ambient = true): Promise<string | undefined> {
+  private async resolveUncached(reference: string, from: string, ambient = true): Promise<string | undefined> {
     // WXS 和显式 JSON 引用只读取静态文件，保留源模块身份及类型检查器。
     if (/\.(?:wxs|json)$/i.test(reference)) {
       const candidates = [...await this.files?.candidates(reference, from, 'file') ?? [], new URL(reference, from).href];
@@ -273,6 +341,7 @@ export class ScriptProject {
         if (!this.ambientModules) {
           this.ambientModules = new Map();
           if (this.reader.revision) this.revisions.set(this.root, this.reader.revision(this.root));
+          this.observe(this.root);
           const uris = await this.reader.findFiles(this.request.document.uri, '**/*.d.ts', this.maxFiles + 1);
           if (uris.length > this.maxFiles) this.exhausted = true;
           for (const uri of uris.slice(0, this.maxFiles)) {
@@ -309,44 +378,58 @@ export class ScriptProject {
 
   /** 优先按层级加载项目源码，再读取包依赖，避免声明包耗尽页面解析预算。 */
   private async load(uri: string): Promise<void> {
-    const pending = new Set([uri]);
-    const dependencies = new Set<string>();
-    const deferred: { reference: string; from: string }[] = [];
+    const pending = new Map([[uri, 0]]);
+    const dependencies = new Map<string, number>();
+    const deferred: { reference: string; from: string; depth: number }[] = [];
+    /** 共享依赖保留最短已知距离，较长分支不能覆盖近处导入。 */
+    const enqueue = (target: string, depth: number): void => {
+      if (this.sources.has(target)) return;
+      const queue = target.includes('/node_modules/') ? dependencies : pending;
+      queue.set(target, Math.min(depth, queue.get(target) ?? depth));
+    };
     let nextDependency = 0;
+    const checkpoint = this.request.checkpoint;
     // 两个队列都保持发现顺序，已加载索引负责终止循环依赖。
     while (pending.size || dependencies.size || nextDependency < deferred.length) {
-      if (this.cancelled) return;
-      if (this.sources.size >= this.maxFiles) { this.exhausted = true; return; }
+      if (this.cancelled || checkpoint && !await checkpoint(this.request.cancellation)) return;
       if (!pending.size && nextDependency < deferred.length) {
         const imported = deferred[nextDependency++]!;
         const target = await this.resolve(imported.reference, imported.from);
-        if (target && !this.sources.has(target)) (target.includes('/node_modules/') ? dependencies : pending).add(target);
+        if (target) enqueue(target, imported.depth);
         continue;
       }
       const queue = pending.size ? pending : dependencies;
-      const current = queue.values().next().value!;
+      const [current, depth] = queue.entries().next().value!;
       queue.delete(current);
       if (this.sources.has(current)) continue;
+      if (this.sources.size >= this.maxFiles) { this.exhausted = true; return; }
       const content = await this.read(current);
       if (!content) continue;
-      const source = ts.createSourceFile(current, content.text, ts.ScriptTarget.Latest, true, /\.wxs$/i.test(current) ? ts.ScriptKind.JS : undefined);
+      const previous = this.previousSources?.get(current);
+      const source = previous?.text === content.text ? previous : ts.createSourceFile(current, content.text, ts.ScriptTarget.Latest, true, /\.wxs$/i.test(current) ? ts.ScriptKind.JS : undefined);
       this.sources.set(current, source);
       const info = ts.preProcessFile(content.text, true, true);
-      for (const imported of info.importedFiles) {
+      const imports = this.entryImports?.uri === current ? info.importedFiles.filter((item) => this.entryImports!.names.has(item.fileName)) : info.importedFiles;
+      if (this.maxDepth && depth >= this.maxDepth && (imports.length || info.referencedFiles.length || info.libReferenceDirectives.length)) {
+        this.exhausted = true;
+        this.explain({ code: 'budget', message: `脚本引用链达到 ${this.maxDepth} 层上限，可调整 wxml.maxScriptDepth；未继续展开依赖。`, uri: current });
+        continue;
+      }
+      for (const imported of imports) {
         const reference = imported.fileName;
         const mapped = Object.keys(this.options.paths ?? {}).some((pattern) => pattern.includes('*')
           ? reference.startsWith(pattern.slice(0, pattern.indexOf('*'))) && reference.endsWith(pattern.slice(pattern.indexOf('*') + 1)) : reference === pattern);
         // 包入口的路径探测同样会占用预算，先保留本地路径和 tsconfig 别名。
         if (!reference.startsWith('.') && !reference.startsWith('/') && !mapped) {
-          deferred.push({ reference, from: current });
+          deferred.push({ reference, from: current, depth: depth + 1 });
           continue;
         }
         const target = await this.resolve(imported.fileName, current);
-        if (target && !this.sources.has(target)) (target.includes('/node_modules/') ? dependencies : pending).add(target);
+        if (target) enqueue(target, depth + 1);
       }
-      for (const reference of info.referencedFiles) pending.add(new URL(reference.fileName, current).toString());
+      for (const reference of info.referencedFiles) enqueue(new URL(reference.fileName, current).toString(), depth + 1);
       if (this.settings.libraryUri && current.startsWith(directory(this.settings.libraryUri))) {
-        for (const library of info.libReferenceDirectives) pending.add(new URL(`lib.${library.fileName}.d.ts`, current).toString());
+        for (const library of info.libReferenceDirectives) enqueue(new URL(`lib.${library.fileName}.d.ts`, current).toString(), depth + 1);
       }
     }
   }
@@ -373,19 +456,32 @@ export class ScriptProject {
     return true;
   }
 
+  /** 合并建图后复制查询状态，依赖仍登记到当前调用者的追踪作用域。 */
+  private adopt(project: ScriptProject): void {
+    for (const [uri, document] of project.documents) if (uri !== this.request.document.uri) this.documents.set(uri, document);
+    for (const [uri, source] of project.sources) this.sources.set(uri, source);
+    for (const [name, target] of project.resolutions) this.resolutions.set(name, target);
+    for (const uri of project.mapped) this.mapped.add(uri);
+    for (const [uri, version] of project.revisions) { this.revisions.set(uri, version); this.reader.revision?.(uri); }
+    this.options = project.options;
+    this.program = project.program;
+    this.exhausted = project.exhausted;
+    if (this.exhausted) this.explain({ code: 'budget', message: '共享脚本图仍受解析预算限制，当前结果不完整。' });
+  }
+
   /** 找到同名源码后建立仅在内存运行的类型检查器。 */
-  async create(entryUri?: string, additional: readonly string[] = []): Promise<{ program: ts.Program; entry: ts.SourceFile } | undefined> {
+  async create(entryUri?: string, additional: readonly string[] = [], imports?: readonly string[]): Promise<{ program: ts.Program; entry: ts.SourceFile } | undefined> {
     if (this.built) return this.program;
     this.built = true;
     if (this.cancelled || (!entryUri && !/\.wxml$/i.test(this.request.document.uri))) return undefined;
     const revision = this.reader.revision;
     const cache = revision && projectCaches.get(revision);
-    const key = JSON.stringify([this.root, this.request.document.uri, entryUri, additional, this.settings]);
+    const key = JSON.stringify([this.root, this.request.document.uri, entryUri, additional, this.settings, imports]);
     // 普通模板文本不进入脚本 Program，编辑模板仍可复用未变化的页面脚本图。
     const input = /\.wxml$/i.test(this.request.document.uri) ? undefined : this.request.document.text;
-    const cached = cache?.find((item) => item.key === key && item.input === input);
-    if (cached && await this.unchanged(cached) && !this.cancelled) {
-      this.reader.navigation?.record({ code: 'cached', message: `复用已核验依赖修订的完整脚本图，包含 ${cached.sources.size} 份源码及 ${Object.keys(cached.options.paths ?? {}).length} 条 paths 映射。`, uri: cached.program.entry.fileName });
+    const cached = cache?.find((item) => item.key === key);
+    if (cached && cached.input === input && await this.unchanged(cached) && !this.cancelled) {
+      this.reader.navigation?.record({ code: 'cached', message: `复用已核验依赖修订的脚本图，包含 ${cached.sources.size} 份源码及 ${Object.keys(cached.options.paths ?? {}).length} 条 paths 映射。`, uri: cached.program.entry.fileName });
       for (const [uri, document] of cached.documents) if (uri !== this.request.document.uri) this.documents.set(uri, document);
       for (const [uri, source] of cached.sources) this.sources.set(uri, source);
       for (const [name, target] of cached.resolutions) this.resolutions.set(name, target);
@@ -393,16 +489,40 @@ export class ScriptProject {
       for (const [uri, revision] of cached.revisions) this.revisions.set(uri, revision);
       this.options = cached.options;
       this.program = cached.program;
+      this.exhausted = cached.exhausted;
+      if (this.exhausted) this.explain({ code: 'budget', message: '缓存脚本图仍受解析预算限制，未将部分结果视为完整上下文。', uri: cached.program.entry.fileName });
       cache!.splice(cache!.indexOf(cached), 1); cache!.push(cached);
       return this.program;
     }
+    if (revision && !this.shared && this.documents.size === 1) {
+      const pending = pendingProjects.get(this.reader) ?? new Map();
+      pendingProjects.set(this.reader, pending);
+      let running = pending.get(key);
+      if (!running || running.input !== input) {
+        const callers = new Set<Cancellation>();
+        const cancellation = { get isCancellationRequested() { return [...callers].every((caller) => caller.isCancellationRequested); } };
+        const project = new ScriptProject(this.reader, { ...this.request, cancellation }, this.settings, true);
+        const promise = Promise.resolve().then(async () => { await project.create(entryUri, additional, imports); return project; }).finally(() => { if (pending.get(key)?.promise === promise) pending.delete(key); });
+        running = { input, callers, promise }; pending.set(key, running);
+      }
+      running.callers.add(this.request.cancellation);
+      try {
+        const project = await running.promise;
+        if (this.cancelled) return undefined;
+        if (project.program && [...project.revisions].every(([uri, version]) => revision(uri) === version)) { this.adopt(project); return this.program; }
+        // 共享快照过期时由当前请求重新读取，不沿用其他调用者的旧结果。
+      } finally { running.callers.delete(this.request.cancellation); }
+    }
+    // 同一入口重建时复用未变化的语法树，类型关系仍由新 Program 核验。
+    this.previousSources = cached?.sources;
     const base = this.request.document.uri.replace(/\.wxml$/i, '');
     let entry: string | undefined = entryUri;
     for (const extension of entry ? [] : ['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs']) {
       if (await this.read(base + extension)) { entry = base + extension; break; }
     }
     if (!entry) { this.reader.navigation?.record({ code: 'missing', message: '当前模板没有找到同名 TS/JS 脚本，无法建立页面成员上下文。', uri: this.request.document.uri }); return undefined; }
-    await this.configure(entry);
+    if (!this.navigationConfigured) await this.configure(entry);
+    if (imports) this.entryImports = { uri: entry, names: new Set(imports) };
     await this.load(entry);
     for (const uri of additional) await this.load(uri);
     if (this.settings.libraryUri) await this.load(this.settings.libraryUri);
@@ -422,18 +542,20 @@ export class ScriptProject {
     };
     this.options.allowNonTsExtensions = true;
     // TS 中的 require 链也由静态语义读取，所有已加载节点必须属于此 Program，避免检查未绑定的语法树。
-    const program = ts.createProgram([...new Set([entry, ...additional, ...this.ambientRoots, ...this.sources.keys()])], this.options, host);
+    const program = ts.createProgram([...new Set([entry, ...additional, ...this.ambientRoots, ...this.sources.keys()])], this.options, host, cached?.program.program);
     const source = program.getSourceFile(entry);
     if (this.exhausted) this.reader.navigation?.record({ code: 'budget', message: `脚本引用链达到文件、文本或探测预算，当前图可能不完整；文件上限为 ${this.maxFiles}，可检查 wxml.maxScriptFiles。`, uri: entry });
     this.program = source ? { program, entry: source } : undefined;
     for (const dependency of this.files?.dependencies ?? []) this.revisions.set(dependency.uri, dependency.revision);
-    if (revision && this.program && !this.exhausted && !this.cancelled) {
+    if (revision && this.program && !this.cancelled) {
+      // 受限图也观察目录结构，新建文件后重新尝试补全引用图。
+      if (this.exhausted) this.revisions.set(this.root, revision(this.root));
       if (this.sources.has(this.request.document.uri)) this.revisions.set(this.request.document.uri, revision(this.request.document.uri));
       const weight = [...this.documents.values()].reduce((total, document) => total + (document?.text.length ?? 0), 0);
-      if (weight <= 8_000_000 && [...this.revisions].every(([uri, version]) => revision(uri) === version)) {
+      if (weight <= 16_000_000 && [...this.revisions].every(([uri, version]) => revision(uri) === version)) {
         const entries = (projectCaches.get(revision) ?? []).filter((item) => item.key !== key);
-        entries.push({ key, input, documents: this.documents, sources: this.sources, resolutions: this.resolutions, mapped: this.mapped, revisions: this.revisions, options: this.options, program: this.program, weight });
-        while (entries.length > 4 || entries.reduce((total, item) => total + item.weight, 0) > 8_000_000) entries.shift();
+        entries.push({ key, input, documents: this.documents, sources: this.sources, resolutions: this.resolutions, mapped: this.mapped, revisions: this.revisions, options: this.options, program: this.program, weight, exhausted: this.exhausted });
+        while (entries.length > 8 || entries.reduce((total, item) => total + item.weight, 0) > 24_000_000) entries.shift();
         projectCaches.set(revision, entries);
       }
     }

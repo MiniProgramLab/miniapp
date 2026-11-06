@@ -16,6 +16,7 @@ import { createDependencyTracking } from '../src/adapters/vscode/dependency-trac
 import { createNavigationTracking } from '../src/adapters/vscode/navigation-tracking';
 import type { CheckProvider } from '../src/api';
 import { createCssModule } from '../src/languages/css';
+import { provideScriptDefinition } from '../src/languages/typescript/navigation';
 
 /** 可传入任意模板、查询名称和工作区目录，只读取快照，不运行或修改工程代码。 */
 const file = process.argv[2];
@@ -99,16 +100,28 @@ const semanticReferences = process.argv.includes('--references');
 const route = process.argv.includes('--route');
 const pageQuery = process.argv.includes('--page-query');
 const dataPath = process.argv.includes('--data-path');
+const scriptNavigation = process.argv.includes('--script-navigation');
 const structureCheck = process.argv.includes('--structure');
 const prepareComponent = process.argv.includes('--prepare-component');
 const extractTemplate = process.argv.includes('--extract-template') || prepareComponent;
 const wxsCheck = process.argv.includes('--wxs-check'), wxsSignature = process.argv.includes('--wxs-signature');
-const request: LanguageRequest = { document: { uri, text, version: 1, languageId: uri.endsWith('.wxs') ? 'wxs' : dataset || instance || pageQuery || dataPath || (route || semanticReferences) && !uri.endsWith('.wxml') ? uri.endsWith('.js') ? 'javascript' : uri.endsWith('.json') ? 'json' : 'typescript' : 'wxml' }, offset: component ? text.indexOf(name) + Math.floor(name.length / 2) : text.lastIndexOf(name) + name.length, cancellation: { isCancellationRequested: false } };
+const request: LanguageRequest = { ...(process.argv.includes('--deferred-completion') ? { deferCompletionDetails: true } : {}), document: { uri, text, version: 1, languageId: uri.endsWith('.wxs') ? 'wxs' : dataset || instance || pageQuery || dataPath || scriptNavigation || (route || semanticReferences) && !uri.endsWith('.wxml') ? uri.endsWith('.js') ? 'javascript' : uri.endsWith('.json') ? 'json' : 'typescript' : 'wxml' }, offset: component ? text.indexOf(name) + Math.floor(name.length / 2) : text.lastIndexOf(name) + name.length, cancellation: { isCancellationRequested: false } };
 const workspaceCheck = process.argv.includes('--workspace-check');
-const expression = dataset || component || instance || semanticReferences || route || pageQuery || dataPath || workspaceCheck || wxsCheck || wxsSignature || structureCheck || extractTemplate ? undefined : scriptExpression(request);
-if (!expression && !dataset && !component && !instance && !semanticReferences && !route && !pageQuery && !dataPath && !workspaceCheck && !wxsCheck && !wxsSignature && !structureCheck && !extractTemplate) throw new Error('查询名称必须位于模板表达式或事件处理方法中。');
+const expression = dataset || component || instance || semanticReferences || route || pageQuery || dataPath || scriptNavigation || workspaceCheck || wxsCheck || wxsSignature || structureCheck || extractTemplate ? undefined : scriptExpression(request);
+if (!expression && !dataset && !component && !instance && !semanticReferences && !route && !pageQuery && !dataPath && !scriptNavigation && !workspaceCheck && !wxsCheck && !wxsSignature && !structureCheck && !extractTemplate) throw new Error('查询名称必须位于模板表达式或事件处理方法中。');
 const maxFiles = Number(process.argv.find((argument) => argument.startsWith('--max-files='))?.split('=')[1] ?? 400);
-const options = { maxFiles, libraryUri: new URL('../node_modules/typescript/lib/lib.es5.d.ts', import.meta.url).href };
+const maxDepth = Number(process.argv.find((argument) => argument.startsWith('--max-depth='))?.split('=')[1] ?? 12);
+const options = { maxFiles, maxDepth, libraryUri: new URL('../node_modules/typescript/lib/lib.es5.d.ts', import.meta.url).href };
+if (scriptNavigation) {
+  /** 脚本导航记录真实读取次数和声明位置，便于核对优化前后的结果。 */
+  const results = [];
+  for (let query = 0; query < 6; query++) {
+    const before = reads, start = performance.now();
+    const definitions = await provideScriptDefinition(reader, request, { maxFiles, maxDepth });
+    results.push({ query, milliseconds: Math.round((performance.now() - start) * 100) / 100, reads: reads - before, definitions: definitions.map(({ uri, range }) => ({ uri, range })) });
+  }
+  console.log(JSON.stringify({ uri, maxFiles, maxDepth, results }, null, 2)); process.exit(0);
+}
 if (extractTemplate) {
   /** 以光标所在的完整节点生成提取编辑，结果仅计数，不写入项目。 */
   const { structure, nodeAt } = await import('../src/languages/wxml/structure');
@@ -217,17 +230,19 @@ const routes = createRouteResolver(reader, scripts, createRouteContextResolver(r
 const routeFeatures = (uri.endsWith('.wxml') ? createNavigatorPlugin(routes) : createRoutePlugin(scripts, routes)).setup({ logger: { info() {}, error() {} }, subscriptions: { add: (value) => value } });
 /** 数据路径沿真实提供器测量，业务源码仅作为只读输入。 */
 const dataPaths = createDataPathPlugin(reader, () => options).setup({ logger: { info() {}, error() {} }, subscriptions: { add: (value) => value } });
-const results: { query: number; milliseconds: number; reads: number; definitions: number; completions: number }[] = [];
+const hoverOnly = process.argv.includes('--hover-only'), completionOnly = process.argv.includes('--completion-only');
+const results: { query: number; milliseconds: number; reads: number; definitions: number; completions: number; hover?: boolean }[] = [];
 let queryFields: readonly { name: string; type: string; required: boolean; defaultValue?: string }[] = [];
 for (let query = 0; query < 6; query++) {
   const before = reads;
   const start = performance.now();
   const current = { ...request };
   const schema = pageQuery ? await scripts.pageQuery?.(current, uri) : undefined;
-  const definitions = pageQuery ? schema?.fields?.flatMap((field) => field.definitions) ?? [] : dataPath ? await dataPaths.definition!.provide(current) : route ? await routeFeatures.definition!.provide(current) : instance ? await instances.definition!.provide(request) : dataset ? await fields.definition!.provide(request) : component ? await components.definition(request) : await scripts.resolve(request, expression!);
-  const completions = process.argv.includes('--definition-only') ? [] : pageQuery ? schema?.fields ?? [] : dataPath ? await dataPaths.completion!.provide({ ...current }) : route ? await routeFeatures.completion!.provide({ ...current }) : instance ? await instances.completion!.provide(request) : dataset ? await fields.completion!.provide(request) : component ? await components.completion?.(request) ?? [] : await scripts.complete!(request, expression!);
+  const hover = hoverOnly ? await templates.hover?.(current, expression!) : undefined;
+  const definitions = hoverOnly || completionOnly ? [] : pageQuery ? schema?.fields?.flatMap((field) => field.definitions) ?? [] : dataPath ? await dataPaths.definition!.provide(current) : route ? await routeFeatures.definition!.provide(current) : instance ? await instances.definition!.provide(request) : dataset ? await fields.definition!.provide(request) : component ? await components.definition(request) : await scripts.resolve(request, expression!);
+  const completions = hoverOnly || process.argv.includes('--definition-only') ? [] : pageQuery ? schema?.fields ?? [] : dataPath ? await dataPaths.completion!.provide({ ...current }) : route ? await routeFeatures.completion!.provide({ ...current }) : instance ? await instances.completion!.provide(request) : dataset ? await fields.completion!.provide(request) : component ? await components.completion?.(request) ?? [] : await scripts.complete!(request, expression!);
   if (schema) queryFields = schema.fields?.map((field) => ({ name: field.name, type: field.type.display, required: field.required, ...(field.defaultValue === undefined ? {} : { defaultValue: field.defaultValue }) })) ?? [];
-  results.push({ query, milliseconds: Math.round((performance.now() - start) * 100) / 100, reads: reads - before, definitions: definitions.length, completions: completions.length });
+  results.push({ query, milliseconds: Math.round((performance.now() - start) * 100) / 100, reads: reads - before, definitions: definitions.length, completions: completions.length, ...(hoverOnly ? { hover: !!hover } : {}) });
   if (process.argv.includes('--open-target')) for (const definition of definitions) {
     opened.set(definition.uri, (opened.get(definition.uri) ?? 0) + 1);
     hostRevisions.changed(definition.uri, root);
@@ -235,4 +250,4 @@ for (let query = 0; query < 6; query++) {
 }
 const graph = new ScriptProject(reader, request, options);
 const created = await graph.create(dataset || instance || pageQuery || dataPath || route && !uri.endsWith('.wxml') ? uri : undefined);
-console.log(JSON.stringify({ uri, name, maxFiles, graph: { sources: graph.sources.size, probes: graph.documents.size, complete: !!created && !graph.exhausted }, ...(pageQuery ? { queryFields } : {}), results }, null, 2));
+console.log(JSON.stringify({ uri, name, maxFiles, graph: { sources: graph.sources.size, probes: graph.documents.size, characters: [...graph.documents.values()].reduce((total, item) => total + (item?.text.length ?? 0), 0), complete: !!created && !graph.exhausted }, ...(pageQuery ? { queryFields } : {}), results }, null, 2));

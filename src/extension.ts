@@ -28,12 +28,13 @@ export function activate(context: vscode.ExtensionContext): MiniAppApi {
     const reader: WorkspaceReader = { ...workspace, fileResolver: (uri, cancellation) => createProjectFileResolver(workspace, uri, cancellation) };
     const css = createCssModule(reader, (uri) => {
       const settings = vscode.workspace.getConfiguration('miniprogramlab.miniapp.css', vscode.Uri.parse(uri));
-      return { sourceRoot: settings.get<string>('sourceRoot', ''), includePaths: settings.get<string[]>('includePaths', []), maxFiles: settings.get<number>('maxFiles', 300) };
+      return { sourceRoot: settings.get<string>('sourceRoot', ''), includePaths: settings.get<string[]>('includePaths', []), maxFiles: settings.get<number>('maxFiles', 300), maxDepth: settings.get<number>('maxDepth', 12) };
     });
     runtime.register(css.plugin);
     runtime.register(createFileNavigationPlugin(reader));
     const scripts = createScriptResolver(reader, (uri) => ({
       maxFiles: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxScriptFiles', 400),
+      maxDepth: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxScriptDepth', 12),
       maxRenameFiles: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxRenameFiles', 5000),
       adapters: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<ScriptAdapter[]>('adapters', []),
       libraryUri: vscode.Uri.joinPath(context.extensionUri, 'dist', 'typescript-lib', 'lib.es5.d.ts').toString(),
@@ -43,12 +44,14 @@ export function activate(context: vscode.ExtensionContext): MiniAppApi {
     }));
     runtime.register(createDataPathPlugin(reader, (uri) => ({
       maxFiles: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxScriptFiles', 400),
+      maxDepth: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxScriptDepth', 12),
       adapters: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<ScriptAdapter[]>('adapters', []),
       libraryUri: vscode.Uri.joinPath(context.extensionUri, 'dist', 'typescript-lib', 'lib.es5.d.ts').toString(),
     })));
     /** 消费图与既有组件提示共用解析设置，草稿快照通过读取端口注入。 */
     const componentScripts = (snapshot: WorkspaceReader) => createComponentScriptResolver(snapshot, (uri) => ({
       maxFiles: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxScriptFiles', 400),
+      maxDepth: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxScriptDepth', 12),
       adapters: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<ScriptAdapter[]>('adapters', []),
     }));
     /** 不同请求可注入独立快照，源码根与框架适配保持同一规则。 */
@@ -67,6 +70,7 @@ export function activate(context: vscode.ExtensionContext): MiniAppApi {
     runtime.register(createNavigatorPlugin(routes));
     const instances = createInstanceFeatures(reader, templates, createComponentScriptResolver(reader, (uri) => ({
       maxFiles: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxScriptFiles', 400),
+      maxDepth: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxScriptDepth', 12),
       adapters: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<ScriptAdapter[]>('adapters', []),
     })), components);
     const rename = createRenameFeatures(reader, templates, components, (uri) => ({ maxFiles: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxRenameFiles', 5000) }), instances);
@@ -84,8 +88,13 @@ export function activate(context: vscode.ExtensionContext): MiniAppApi {
       /** 提供器沿用原生交互，重命名与脚本和模板的既有提供器组合。 */
       setup: () => { const { rename: _rename, ...features } = dataset; return features; },
     });
-    runtime.register(createScriptNavigationPlugin(reader, semanticRename, rename.references));
-    runtime.register(createWxsPlugin(reader, () => ({}), rename, rename.references));
+    runtime.register(createScriptNavigationPlugin(reader, semanticRename, rename.references, (uri) => ({
+      maxDepth: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxScriptDepth', 12),
+    })));
+    runtime.register(createWxsPlugin(reader, (uri) => ({
+      maxFiles: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxScriptFiles', 400),
+      maxDepth: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<number>('maxScriptDepth', 12),
+    }), rename, rename.references));
     runtime.register(createWxmlPlugin(css.classes, templates, (uri) => ({
       autoClosingTags: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<boolean>('autoClosingTags', true),
       customData: vscode.workspace.getConfiguration('miniprogramlab.miniapp.wxml', vscode.Uri.parse(uri)).get<string[]>('customData', []),

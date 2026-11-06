@@ -28,28 +28,34 @@ export function bindingsAt(text: string, tags: readonly TagToken[], offset: numb
   return bindings;
 }
 
-/** 只识别模板插值与事件值；跳过注释及 WXS 原始脚本。 */
-export function expressionAt(text: string, offset: number): TemplateExpression | undefined {
-  const stack: TagToken[] = [];
-  /** 在给定文本区间定位插值，不将普通字符串误判为脚本变量。 */
-  const find = (start: number, end: number, tags: readonly TagToken[]): TemplateExpression | undefined => {
+/** 同文快照共享表达式和循环作用域，缓存按文本核对并限制总量。 */
+const expressionCache = new Map<string, readonly TemplateExpression[]>();
+let expressionCharacters = 0;
+
+/** 卸载语言功能时释放文档索引。 */
+export function clearExpressionCache(): void { expressionCache.clear(); expressionCharacters = 0; }
+
+/** 一次扫描收集全部表达式，避免诊断按每个光标从头解析。 */
+export function templateExpressions(text: string): readonly TemplateExpression[] {
+  const cached = expressionCache.get(text);
+  if (cached) { expressionCache.delete(text); expressionCache.set(text, cached); return cached; }
+  const stack: TagToken[] = [], expressions: TemplateExpression[] = [];
+  /** 属性和正文使用相同的插值边界与循环作用域。 */
+  const collect = (start: number, end: number, tags: readonly TagToken[], objectLiteral = false): void => {
     for (let cursor = text.indexOf('{{', start); cursor >= start && cursor < end;) {
       const close = skipExpression(text, cursor);
       const range = { start: cursor + 2, end: Math.min(end, text.slice(close - 2, close) === '}}' ? close - 2 : close) };
-      if (offset >= range.start && offset <= range.end) return { text: text.slice(range.start, range.end), range, bindings: bindingsAt(text, tags, offset) };
+      expressions.push({ text: text.slice(range.start, range.end), range, bindings: bindingsAt(text, tags, range.start), ...(objectLiteral ? { objectLiteral: true } : {}) });
       cursor = text.indexOf('{{', Math.max(cursor + 2, close));
     }
-    return undefined;
   };
-  for (let cursor = 0; cursor < text.length && cursor <= offset;) {
+  for (let cursor = 0; cursor < text.length;) {
     if (text.startsWith('<!--', cursor)) {
       const end = text.indexOf('-->', cursor + 4);
       cursor = end < 0 ? text.length : end + 3;
     } else if (text.startsWith('{{', cursor)) {
       const end = skipExpression(text, cursor);
-      const expression = find(cursor, end, stack);
-      if (expression) return expression;
-      cursor = end;
+      collect(cursor, end, stack); cursor = end;
     } else if (text[cursor] === '<' && /[A-Za-z/]/.test(text[cursor + 1] ?? '')) {
       const tag = readTag(text, cursor);
       if (tag.closing) {
@@ -59,27 +65,41 @@ export function expressionAt(text: string, offset: number): TemplateExpression |
         const tags = [...stack, tag];
         for (const attribute of tag.attributes) {
           const range = attribute.valueRange;
-          // 完整选中方法或变量后，光标会停在值末尾，仍应进入原有声明链。
-          if (!range || offset < range.start || offset > range.end) continue;
-          const expression = find(range.start, range.end, tags);
-          if (expression) return tag.name === 'template' && attribute.name === 'data'
-            ? { ...expression, objectLiteral: true } : expression;
+          if (!range) continue;
+          collect(range.start, range.end, tags, tag.name === 'template' && attribute.name === 'data');
           if (/^(?:(?:capture-|mut-)?(?:bind|catch):?[\w-]+|worklet:[\w-]+)$/.test(attribute.name)) {
             const value = text.slice(range.start, range.end);
-            if (/^\s*(?:[$\p{ID_Start}_][$\p{ID_Continue}]*(?:\.[$\p{ID_Start}_][$\p{ID_Continue}]*)*\.?)?\s*$/u.test(value)) {
-              return { text: value, range, bindings: bindingsAt(text, tags, offset), event: true };
-            }
+            if (/^\s*(?:[$\p{ID_Start}_][$\p{ID_Continue}]*(?:\.[$\p{ID_Start}_][$\p{ID_Continue}]*)*\.?)?\s*$/u.test(value)) expressions.push({ text: value, range, bindings: bindingsAt(text, tags, range.start), event: true });
           }
         }
         if (!tag.selfClosing && tag.name === 'wxs') {
           const end = text.indexOf('</wxs', tag.end);
-          cursor = end < 0 ? text.length : end;
-          continue;
+          cursor = end < 0 ? text.length : end; continue;
         }
         if (!tag.selfClosing) stack.push(tag);
       }
       cursor = Math.max(cursor + 1, tag.end);
     } else cursor++;
   }
-  return undefined;
+  expressions.sort((a, b) => a.range.start - b.range.start);
+  if (text.length <= 250_000 && expressions.length <= 16_000) {
+    expressionCache.set(text, expressions); expressionCharacters += text.length;
+    while (expressionCache.size > 8 || expressionCharacters > 1_000_000) {
+      const oldest = expressionCache.keys().next().value!;
+      expressionCharacters -= oldest.length; expressionCache.delete(oldest);
+    }
+  }
+  return expressions;
+}
+
+/** 二分定位当前表达式，右边界保留选中名称后的导航行为。 */
+export function expressionAt(text: string, offset: number): TemplateExpression | undefined {
+  const expressions = templateExpressions(text);
+  let low = 0, high = expressions.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (expressions[middle]!.range.start <= offset) low = middle + 1; else high = middle;
+  }
+  const expression = expressions[low - 1];
+  return expression && offset <= expression.range.end ? expression : undefined;
 }

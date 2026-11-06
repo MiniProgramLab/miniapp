@@ -186,8 +186,10 @@
     {
       "name": "core",
       "files": [
+        "src/core/cooperative.ts",
         "src/core/disposable-store.ts",
         "src/core/plugin-runtime.ts",
+        "src/core/revision-cache.ts",
         "src/core/workspace-check.ts",
         "src/core/workspace-revisions.ts"
       ],
@@ -195,10 +197,13 @@
         "DisposableStore",
         "PluginRuntime",
         "checkWorkspace",
+        "createCheckpoint",
+        "createRevisionCache",
         "createWorkspaceRevisions",
         "workspaceRevisionKey"
       ],
       "ports": [
+        "Cancellation",
         "CheckFile",
         "CheckFinding",
         "CheckIssue",
@@ -326,6 +331,7 @@
       ],
       "ports": [
         "CallSignature",
+        "Cancellation",
         "CodeAction",
         "Completion",
         "ComponentEvent",

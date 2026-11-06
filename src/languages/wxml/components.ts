@@ -490,7 +490,9 @@ class ComponentProject {
     if (!scripts || this.request.cancellation.isCancellationRequested) return [];
     const result: Diagnostic[] = [];
     const closed = await this.closedRegistration();
+    const checkpoint = this.request.checkpoint;
     for (const tag of scanTags(this.request.document.text)) {
+      if (this.request.cancellation.isCancellationRequested || checkpoint && !await checkpoint(this.request.cancellation)) return [];
       if (tag.closing) continue;
       if (closed && !nativeTags.has(tag.name) && !(await this.registration(tag.name)).length) result.push({ range: tag.nameRange, severity: 'warning', code: 'unregistered-component', message: `组件 ${tag.name} 未在当前页面或应用中注册。` });
       let component: ComponentInfo | undefined;

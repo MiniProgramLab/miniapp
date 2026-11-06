@@ -49,6 +49,19 @@ test('SCSS use 和多层 forward 穿透到 partial，支持别名及目录入口
   assert.deepEqual(await graph.targets(), ['theme/_tokens.scss:$brand']);
 });
 
+test('样式深度限制按导入层数终止，取消限制后仍能找到深层声明', async () => {
+  const files = { 'index.scss': '@use "a" as ui; x { color: ui.$br|and; }', '_a.scss': '@forward "b";', '_b.scss': '@forward "c";', '_c.scss': '$brand:red;' };
+  const bounded = fixture(files, 'index.scss', { maxDepth: 1 });
+  assert.deepEqual(await bounded.targets(), []);
+  assert.ok(!bounded.reads.some((uri) => uri.endsWith('/_b.scss')));
+  assert.deepEqual(await fixture(files, 'index.scss', { maxDepth: 0 }).targets(), ['_c.scss:$brand']);
+});
+
+test('样式类名图按最短导入链遍历，长分支不会遮住较近的共享依赖', async () => {
+  const graph = fixture({ 'index.css': '@import "a.css";@import "shared.css";x{color:var(--br|and)}', 'a.css': '@import "middle.css";', 'middle.css': '@import "shared.css";', 'shared.css': '@import "tokens.css";', 'tokens.css': ':root{--brand:red;}' }, 'index.css', { maxDepth: 2 });
+  assert.deepEqual(await graph.targets(), ['tokens.css:--brand']);
+});
+
 test('SCSS 转发前缀和 show 依据公开名称过滤', async () => {
   const files = { 'index.scss': '@use "theme" as ui; x { color: ui.$ui_br|and; }', '_theme.scss': '@forward "tokens" as ui-* show $ui-brand;', '_tokens.scss': '$brand: red; $secret: blue;' };
   assert.deepEqual(await fixture(files, 'index.scss').targets(), ['_tokens.scss:$brand']);

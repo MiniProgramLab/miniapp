@@ -9,8 +9,17 @@ export interface TemplateNode {
   end: number;
 }
 
+/** 同一文本的模板节点由全部查询共享，不保留无限编辑历史。 */
+const nodeCache = new Map<string, TemplateNode[]>();
+let nodeCharacters = 0;
+
+/** 卸载时同步释放节点快照。 */
+export function clearTemplateNodeCache(): void { nodeCache.clear(); nodeCharacters = 0; }
+
 /** 保留模板结构而不执行表达式，忽略注释和 WXS 中的伪标签。 */
 export function templateNodes(text: string): TemplateNode[] {
+  const cached = nodeCache.get(text);
+  if (cached) { nodeCache.delete(text); nodeCache.set(text, cached); return cached; }
   const nodes: TemplateNode[] = [];
   const stack: TemplateNode[] = [];
   for (let cursor = 0; cursor < text.length;) {
@@ -37,6 +46,13 @@ export function templateNodes(text: string): TemplateNode[] {
       }
       cursor = Math.max(cursor + 1, tag.end);
     } else cursor++;
+  }
+  if (text.length <= 250_000 && nodes.length <= 16_000) {
+    nodeCache.set(text, nodes); nodeCharacters += text.length;
+    while (nodeCache.size > 8 || nodeCharacters > 1_000_000) {
+      const oldest = nodeCache.keys().next().value!;
+      nodeCharacters -= oldest.length; nodeCache.delete(oldest);
+    }
   }
   return nodes;
 }

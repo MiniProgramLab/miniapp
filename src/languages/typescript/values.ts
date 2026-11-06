@@ -26,6 +26,9 @@ export class Values {
   /** 由请求级 Program 提供语义，递归额外受节点预算保护。 */
   constructor(readonly checker: ts.TypeChecker, private readonly cancelled: () => boolean, private readonly module: (reference: string, from: string) => ts.SourceFile | undefined, private readonly adapters: readonly ScriptAdapter[] = []) {}
 
+  /** 求值预算耗尽后不把残缺上下文缓存为完整结果。 */
+  get exhausted(): boolean { return this.steps > 12000; }
+
   /** 建立尚未绑定工厂参数的表达式。 */
   value(node: ts.Node, declaration?: ts.Node): Value {
     return { node, bindings: new Map(), ...(declaration ? { declaration } : {}) };

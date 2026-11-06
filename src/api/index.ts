@@ -54,6 +54,12 @@ export interface LanguageRequest {
   readonly document: DocumentSnapshot;
   readonly offset: number;
   readonly cancellation: Cancellation;
+  /** 同次批量查询共享脚本图，独立交互使用不同作用域。 */
+  readonly analysisScope?: object;
+  /** 编辑器可将补全类型和说明延迟到选中候选时计算。 */
+  readonly deferCompletionDetails?: boolean;
+  /** 宿主在批量解析中按时间片处理交互，返回 false 表示取消。 */
+  readonly checkpoint?: (cancellation: Cancellation) => Promise<boolean>;
 }
 
 /** 支持同步及异步的语言功能结果。 */
@@ -68,6 +74,8 @@ export interface Completion {
   readonly insertText: string;
   readonly insertTextFormat?: 'plain' | 'snippet';
   readonly range: TextRange;
+  /** 可选的详情查询只更新显示内容，不改变候选和替换范围。 */
+  readonly resolve?: (cancellation: Cancellation) => LanguageResult<{ readonly detail: string; readonly documentation: string } | undefined>;
 }
 
 /** 悬浮说明只承载普通文本，安全渲染由适配层负责。 */
@@ -187,6 +195,8 @@ export interface TemplateExpression {
 
 /** 模板脚本导航端口，WXML 不直接依赖 TypeScript 编译器。 */
 export interface ScriptDefinitionResolver {
+  /** 确认当前文件已有页面或组件上下文，空结果无需再反查整个工作区。 */
+  hasContext?(request: LanguageRequest): LanguageResult<boolean>;
   /** 路由 URL 沿常量、导入和静态包装器追踪，普通同名方法不参与。 */
   routeQueries?(request: LanguageRequest, all?: boolean): LanguageResult<readonly RouteAccess[]>;
   /** 应用配置与页面参数沿用脚本静态求值，不执行配置宏。 */

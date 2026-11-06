@@ -13,25 +13,36 @@ export function accepts(actual: SemanticType, expected: SemanticType): boolean {
   return true;
 }
 
-/** 类型按有限深度投影为普通数据，避免跨程序使用失效的编译器对象。 */
+/** 类型投影同时限制层数和节点总量，循环或大联合保守视为未知。 */
 export function semanticType(checker: ts.TypeChecker, type: ts.Type, node: ts.Node, depth = 0): SemanticType {
-  const display = checker.typeToString(type, node, ts.TypeFormatFlags.NoTruncation);
-  if (depth > 5 || type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) return { display, kind: 'unknown' };
-  if (type.isUnion()) return { display, kind: 'unknown', alternatives: type.types.map((part) => semanticType(checker, part, node, depth + 1)) };
-  if (type.flags & ts.TypeFlags.StringLike) return { display, kind: 'string', ...(type.isStringLiteral() ? { literal: type.value } : {}) };
-  if (type.flags & ts.TypeFlags.NumberLike) return { display, kind: 'number', ...(type.isNumberLiteral() ? { literal: type.value } : {}) };
-  if (type.flags & ts.TypeFlags.BooleanLike) return { display, kind: 'boolean', ...(type.flags & ts.TypeFlags.BooleanLiteral ? { literal: display === 'true' } : {}) };
-  if (type.flags & ts.TypeFlags.Null) return { display, kind: 'null' };
-  if (type.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)) return { display, kind: 'undefined' };
-  if (checker.getSignaturesOfType(type, ts.SignatureKind.Call).length) return { display, kind: 'function' };
-  const element = checker.getIndexTypeOfType(type, ts.IndexKind.Number);
-  if (element) return { display, kind: 'array', element: semanticType(checker, element, node, depth + 1) };
-  if (!(type.flags & ts.TypeFlags.Object)) return { display, kind: 'unknown' };
-  const properties: Record<string, SemanticType> = {};
-  for (const member of checker.getPropertiesOfType(type).slice(0, 100)) {
-    properties[member.name] = { ...semanticType(checker, checker.getTypeOfSymbolAtLocation(member, node), node, depth + 1), optional: !!(member.flags & ts.SymbolFlags.Optional) };
-  }
-  return { display, kind: 'object', properties };
+  let remaining = 512, exhausted = false;
+  /** 分支各自记录循环，所有分支共用总预算，避免宽类型指数展开。 */
+  const visit = (type: ts.Type, depth: number, seen: ReadonlySet<ts.Type>): SemanticType => {
+    if (--remaining < 0) { exhausted = true; return { display: 'unknown', kind: 'unknown' }; }
+    const display = checker.typeToString(type, node);
+    if (depth > 5 || seen.has(type) || type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) return { display, kind: 'unknown' };
+    const visited = new Set(seen).add(type);
+    if (type.isUnion()) return type.types.length > 64 ? { display, kind: 'unknown' } : { display, kind: 'unknown', alternatives: type.types.map((part) => visit(part, depth + 1, visited)) };
+    if (type.flags & ts.TypeFlags.StringLike) return { display, kind: 'string', ...(type.isStringLiteral() ? { literal: type.value } : {}) };
+    if (type.flags & ts.TypeFlags.NumberLike) return { display, kind: 'number', ...(type.isNumberLiteral() ? { literal: type.value } : {}) };
+    if (type.flags & ts.TypeFlags.BooleanLike) return { display, kind: 'boolean', ...(type.flags & ts.TypeFlags.BooleanLiteral ? { literal: display === 'true' } : {}) };
+    if (type.flags & ts.TypeFlags.Null) return { display, kind: 'null' };
+    if (type.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)) return { display, kind: 'undefined' };
+    if (checker.getSignaturesOfType(type, ts.SignatureKind.Call).length) return { display, kind: 'function' };
+    const element = checker.getIndexTypeOfType(type, ts.IndexKind.Number);
+    if (element) return { display, kind: 'array', element: visit(element, depth + 1, visited) };
+    if (!(type.flags & ts.TypeFlags.Object)) return { display, kind: 'unknown' };
+    const members = checker.getPropertiesOfType(type);
+    if (members.length > 100) return { display, kind: 'unknown' };
+    const properties: Record<string, SemanticType> = {};
+    for (const member of members) {
+      if (remaining <= 0) { exhausted = true; break; }
+      properties[member.name] = { ...visit(checker.getTypeOfSymbolAtLocation(member, node), depth + 1, visited), optional: !!(member.flags & ts.SymbolFlags.Optional) };
+    }
+    return { display, kind: 'object', properties };
+  };
+  const result = visit(type, depth, new Set());
+  return exhausted ? { display: result.display, kind: 'unknown' } : result;
 }
 
 /** 只读取函数实现的参数签名，不执行事件处理函数。 */
