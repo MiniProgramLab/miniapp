@@ -1,4 +1,4 @@
-import type { LanguageRequest, ProjectFileResolver, ScriptDefinitionResolver, TemplateContext, TemplateExpression, TemplateScope, WorkspaceReader, WorkspaceText } from '../../api';
+import type { Cancellation, LanguageRequest, ProjectFileResolver, ScriptDefinitionResolver, TemplateContext, TemplateExpression, TemplateScope, WorkspaceReader, WorkspaceText } from '../../api';
 import { attribute, localBindings, ownerAt, templateData, templateNodes } from './template-document';
 import type { TemplateNode } from './template-document';
 
@@ -25,13 +25,17 @@ interface TemplateCall {
 /** 已核验的反向调用图只保存快照，文件或目录修订变化时重新收集边。 */
 interface CachedTemplateIndex {
   readonly key: string;
-  readonly input: WorkspaceText;
+  readonly seed: string;
+  readonly complete: boolean;
   readonly documents: ReadonlyMap<string, TemplateDocument | undefined>;
   readonly incoming: ReadonlyMap<string, TemplateCall[]>;
   readonly dependencies: readonly import('../../api').WorkspaceDependency[];
   readonly weight: number;
 }
 const indexes = new WeakMap<NonNullable<WorkspaceReader['revision']>, CachedTemplateIndex[]>();
+/** 并发请求合并调用图，各调用者独立取消。 */
+interface TemplateBuild { callers: Set<Cancellation>; promise: Promise<TemplateProject> }
+const pendingIndexes = new WeakMap<NonNullable<WorkspaceReader['revision']>, Map<string, TemplateBuild>>();
 
 /** 请求级模板引用图，只沿真实 include 和 template 调用追踪上下文。 */
 class TemplateProject {
@@ -44,9 +48,12 @@ class TemplateProject {
   private readonly roots = new Map<string, string>();
   private readonly markers = new Map<string, boolean>();
   private readonly files: ProjectFileResolver | undefined;
+  private previous: CachedTemplateIndex | undefined;
+  private previousRevisions = new Map<string, string>();
+  private snapshot: CachedTemplateIndex | undefined;
 
   /** 当前文档快照始终优先于文件系统或编辑器的后续内容。 */
-  constructor(private readonly reader: WorkspaceReader, private readonly request: LanguageRequest, settings: TemplateOptions) {
+  constructor(private readonly reader: WorkspaceReader, private readonly request: LanguageRequest, private readonly settings: TemplateOptions, private readonly shared = false) {
     this.files = reader.fileResolver?.(request.document.uri, request.cancellation);
     this.maxFiles = Number.isFinite(settings.maxFiles) ? Math.max(1, Math.min(2000, settings.maxFiles!)) : 500;
   }
@@ -56,7 +63,10 @@ class TemplateProject {
     if (this.request.cancellation.isCancellationRequested) return undefined;
     if (this.documents.has(uri)) return this.documents.get(uri);
     if (this.documents.size >= this.maxFiles) { this.incomplete = true; this.reader.navigation?.record({ code: 'budget', message: `模板图达到 ${this.maxFiles} 份文件上限，调用上下文可能不完整；可检查 wxml.maxTemplateFiles。`, uri }); return undefined; }
-    const snapshot = uri === this.request.document.uri ? this.request.document : await this.reader.read(uri);
+    const revision = this.reader.revision?.(uri);
+    const previous = this.previous?.documents.get(uri);
+    const reusable = revision !== undefined && this.previousRevisions.get(uri) === revision && this.previous?.documents.has(uri);
+    const snapshot = uri === this.request.document.uri ? this.request.document : reusable ? previous : await this.reader.read(uri);
     if (this.request.cancellation.isCancellationRequested) return undefined;
     if (!snapshot || snapshot.text.length > 2_000_000 || this.bytes + snapshot.text.length > 8_000_000) {
       if (snapshot) { this.incomplete = true; this.reader.navigation?.record({ code: 'budget', message: '模板文本超过单文件或总量上限，未继续展开。', uri }); }
@@ -64,7 +74,7 @@ class TemplateProject {
       return undefined;
     }
     this.bytes += snapshot.text.length;
-    const document: TemplateDocument = { ...snapshot, uri, nodes: templateNodes(snapshot.text), imports: [], includes: [] };
+    const document: TemplateDocument = { ...snapshot, uri, nodes: previous?.text === snapshot.text ? previous.nodes : templateNodes(snapshot.text), imports: [], includes: [] };
     this.documents.set(uri, document);
     return document;
   }
@@ -110,29 +120,65 @@ class TemplateProject {
     return undefined;
   }
 
-  /** 连续模板查询复用已核验的调用图，说明命令仍记录完整扫描过程。 */
+  /** 共享图只复制只读引用；受限图仍保留预算说明和原入口。 */
+  private adopt(snapshot: CachedTemplateIndex): void {
+    this.snapshot = snapshot;
+    for (const [uri, document] of snapshot.documents) this.documents.set(uri, document);
+    for (const [target, calls] of snapshot.incoming) this.incoming.set(target, calls);
+    this.incomplete = !snapshot.complete;
+    if (this.incomplete) this.reader.navigation?.record({ code: 'budget', message: '复用的模板调用图仍受解析预算限制。', uri: this.request.document.uri });
+  }
+
+  /** 工作区共享调用关系，编辑时仅重新读取和解析变化文件。 */
   private async index(): Promise<void> {
     const revision = this.reader.revision, capture = this.reader.capture;
     if (!revision || !capture || this.reader.navigation?.active) return this.buildIndex();
     const root = this.reader.root(this.request.document.uri);
-    const key = JSON.stringify([root, this.request.document.uri, this.maxFiles]);
-    const cached = indexes.get(revision)?.find((item) => item.key === key);
-    if (cached && cached.input.text === this.request.document.text && cached.input.version === this.request.document.version && cached.dependencies.every((item) => revision(item.uri) === item.revision)) {
-      for (const [uri, document] of cached.documents) this.documents.set(uri, document);
-      for (const [target, calls] of cached.incoming) this.incoming.set(target, calls);
-      return;
+    const key = JSON.stringify([root, this.maxFiles]);
+    const entries = indexes.get(revision) ?? [];
+    const cached = entries.find((item) => item.key === key && item.complete) ?? entries.find((item) => item.key === key && item.seed === this.request.document.uri);
+    /** 当前缓冲区须与图中的快照一致，其他调用者的旧版本不能替代草稿。 */
+    const usable = (item: CachedTemplateIndex): boolean => {
+      const own = item.documents.get(this.request.document.uri);
+      return (item.complete || item.seed === this.request.document.uri) && own?.text === this.request.document.text && own.version === this.request.document.version
+        && item.dependencies.every((dependency) => revision(dependency.uri) === dependency.revision);
+    };
+    if (cached && usable(cached)) { this.adopt(cached); return; }
+    this.previous = cached;
+    if (!this.shared) {
+      const pending = pendingIndexes.get(revision) ?? new Map<string, TemplateBuild>();
+      pendingIndexes.set(revision, pending);
+      let running = pending.get(key);
+      if (!running || [...running.callers].every((caller) => caller.isCancellationRequested)) {
+        const callers = new Set<Cancellation>();
+        const cancellation = { get isCancellationRequested() { return [...callers].every((caller) => caller.isCancellationRequested); } };
+        const project = new TemplateProject(this.reader, { ...this.request, cancellation }, this.settings, true);
+        const promise = Promise.resolve().then(async () => { await project.index(); return project; }).finally(() => { if (pending.get(key)?.promise === promise) pending.delete(key); });
+        running = { callers, promise }; pending.set(key, running);
+      }
+      running.callers.add(this.request.cancellation);
+      try {
+        const project = await running.promise;
+        if (this.request.cancellation.isCancellationRequested) return;
+        if (project.snapshot && usable(project.snapshot)) { this.adopt(project.snapshot); return; }
+        this.previous = project.snapshot ?? cached;
+      } finally { running.callers.delete(this.request.cancellation); }
     }
+    this.previousRevisions = new Map(this.previous?.dependencies.map((item) => [item.uri, item.revision]));
     const result = await this.reader.capture!(async () => {
       if (root) revision(root);
-      revision(this.request.document.uri);
       await this.buildIndex();
     });
-    if (!this.incomplete && !this.request.cancellation.isCancellationRequested && result.dependencies.every((item) => revision(item.uri) === item.revision)) {
-      const entries = (indexes.get(revision) ?? []).filter((item) => item.key !== key);
-      entries.push({ key, input: this.request.document, documents: new Map(this.documents), incoming: new Map(this.incoming), dependencies: result.dependencies, weight: this.bytes });
-      while (entries.length > 4 || entries.reduce((total, item) => total + item.weight, 0) > 8_000_000) entries.shift();
-      indexes.set(revision, entries);
-    }
+    const dependencies = new Map(result.dependencies.map((item) => [item.uri, item.revision]));
+    for (const item of this.files?.dependencies ?? []) if (!dependencies.has(item.uri)) dependencies.set(item.uri, item.revision);
+    if (this.request.cancellation.isCancellationRequested || [...dependencies].some(([uri, version]) => revision(uri) !== version)) { this.incoming.clear(); return; }
+    const snapshot: CachedTemplateIndex = { key, seed: this.request.document.uri, complete: !this.incomplete,
+      documents: new Map(this.documents), incoming: new Map(this.incoming), dependencies: [...dependencies].map(([uri, revision]) => ({ uri, revision })), weight: this.bytes };
+    this.snapshot = snapshot;
+    const current = (indexes.get(revision) ?? []).filter((item) => item.key !== key || !snapshot.complete && !item.complete && item.seed !== snapshot.seed);
+    current.push(snapshot);
+    while (current.length > 4 || current.reduce((total, item) => total + item.weight, 0) > 8_000_000) current.shift();
+    indexes.set(revision, current);
   }
 
   /** 文件枚举只建立调用关系，不将未引用页面的同名脚本成员作为候选。 */
@@ -140,8 +186,9 @@ class TemplateProject {
     await this.read(this.request.document.uri);
     if (this.request.cancellation.isCancellationRequested) return;
     const checkpoint = this.request.checkpoint;
-    const files = await this.reader.findFiles?.(this.request.document.uri, '**/*.wxml', this.maxFiles) ?? [];
-    for (const uri of files) {
+    const files = await this.reader.findFiles?.(this.request.document.uri, '**/*.wxml', this.maxFiles + 1) ?? [];
+    if (files.length > this.maxFiles) this.incomplete = true;
+    for (const uri of files.slice(0, this.maxFiles)) {
       if (this.request.cancellation.isCancellationRequested || checkpoint && !await checkpoint(this.request.cancellation)) return;
       await this.read(uri);
     }

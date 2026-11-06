@@ -1,4 +1,5 @@
-import type { CodeAction, Completion, ComponentLocation, ComponentProperty, ComponentResolver, ComponentScriptInfo, ComponentScriptResolver, ComponentUsages, Definition, Diagnostic, Hover, LanguageRequest, ProjectFileResolver, ScriptDefinitionResolver, TextRange, WorkspaceReader, WorkspaceText } from '../../api';
+import { createComponentCache } from './component-cache';
+import type { ComponentInspection, CodeAction, Completion, ComponentLocation, ComponentProperty, ComponentResolver, ComponentScriptInfo, ComponentScriptResolver, ComponentUsages, Definition, Diagnostic, Hover, LanguageRequest, ProjectFileResolver, ScriptDefinitionResolver, TextRange, WorkspaceReader, WorkspaceText } from '../../api';
 import { scanTags, tagAt } from './parser';
 import type { TagToken } from './parser';
 import { componentContexts } from './template-project';
@@ -85,19 +86,20 @@ class ComponentProject {
   private environment?: Promise<{ roots: readonly string[]; global: Readonly<Record<string, string>>; from: string; open: boolean }>;
 
   /** 为脚本解析器注入同一读快照，确保配置、属性和插槽来自一致的缓冲区。 */
-  constructor(reader: WorkspaceReader, scripts: (reader: WorkspaceReader) => ComponentScriptResolver, private readonly request: LanguageRequest, private readonly options: ComponentOptions) {
+  constructor(private readonly source: WorkspaceReader, private readonly factory: (reader: WorkspaceReader) => ComponentScriptResolver, private readonly request: LanguageRequest, private readonly options: ComponentOptions, private readonly inspections?: ReturnType<typeof createComponentCache>) {
+    const reader = source, scripts = factory;
     this.files = reader.fileResolver?.(request.document.uri, request.cancellation);
     this.root = (reader.root(request.document.uri) ?? directory(request.document.uri)).replace(/\/?$/, '/');
     this.maxReads = Math.max(1, Math.min(1000, options.maxFiles ?? 400)) * 24 + 128;
-    this.reader = { ...reader, ...(this.files ? { fileResolver: () => this.files! } : {}), root: (uri) => reader.root(uri), ...(reader.findFiles ? { findFiles: (uri: string, pattern: string, limit: number) => reader.findFiles!(uri, pattern, limit) } : {}), read: async (uri) => {
-      if (request.cancellation.isCancellationRequested) return undefined;
+    // 快照读取不绑定首个调用者，取消由共享语义请求统一控制。
+    this.reader = { ...reader, root: (uri) => reader.root(uri), ...(reader.findFiles ? { findFiles: (...args: Parameters<NonNullable<WorkspaceReader['findFiles']>>) => reader.findFiles!(...args) } : {}), read: async (uri) => {
       let pending = this.documents.get(uri);
       if (!pending) {
         if (this.documents.size >= this.maxReads) { reader.navigation?.record({ code: 'budget', message: '组件配置与路径探测达到上限，后续组件来源可能不完整。', uri }); return undefined; }
         pending = (async () => {
           if (reader.revision) this.revisions.set(uri, reader.revision(uri));
           const value = uri === request.document.uri ? request.document : await reader.read(uri);
-          if (!value || request.cancellation.isCancellationRequested) return undefined;
+          if (!value) return undefined;
           if (value.text.length > 2_000_000 || this.bytes + value.text.length > 16_000_000) { reader.navigation?.record({ code: 'budget', message: '组件文本超过单文件或总量上限，后续来源未读取。', uri }); return undefined; }
           this.bytes += value.text.length;
           return value;
@@ -110,11 +112,26 @@ class ComponentProject {
   }
 
   /** 元数据解析以文件为键，循环引用不会重复创建语义图。 */
-  private inspect(uri: string, includeInstance = false): Promise<ComponentScriptInfo | undefined> {
-    const key = `${uri}:${includeInstance}`;
+  private inspect(uri: string, includeInstance = false, inspection: ComponentInspection = {}): Promise<ComponentScriptInfo | undefined> {
+    const key = JSON.stringify([uri, includeInstance, inspection]);
     let pending = this.metadata.get(key);
     if (!pending) {
-      pending = this.reader.read(uri).then((document) => document ? this.scripts.inspect(this.request, uri, includeInstance) : undefined);
+      if (this.inspections) {
+        const key = JSON.stringify([this.request.document.uri, uri, includeInstance, inspection, this.options, this.request.document.languageId === 'wxml' ? undefined : this.request.document]);
+        pending = this.inspections.provide(key, this.request.cancellation, async (cancellation) => {
+          // 共享批次使用独立快照，不能绑定首个调用者的取消信号。
+          const project = new ComponentProject(this.source, this.factory, { ...this.request, cancellation }, this.options);
+          const info = await project.inspect(uri, includeInstance, inspection);
+          const dependencies = new Map(project.revisions);
+          for (const item of [...project.files?.dependencies ?? [], ...info?.dependencies ?? []]) if (!dependencies.has(item.uri)) dependencies.set(item.uri, item.revision);
+          const observed = [...dependencies].map(([uri, revision]) => ({ uri, revision }));
+          return { info: info && { ...info, dependencies: observed }, dependencies: observed };
+        });
+      } else pending = this.reader.read(uri).then((document) => document ? this.scripts.inspect(this.request, uri, includeInstance, inspection) : undefined);
+      pending = pending.then((info) => {
+        for (const item of info?.dependencies ?? []) if (!this.revisions.has(item.uri)) this.revisions.set(item.uri, item.revision);
+        return info;
+      });
       this.metadata.set(key, pending);
     }
     return pending;
@@ -122,7 +139,7 @@ class ComponentProject {
 
   /** JSON 注册优先；没有 JSON 时才读取同名脚本和配置宏。 */
   private async config(base: string): Promise<Readonly<Record<string, string>>> {
-    const json = await this.inspect(base + '.json');
+    const json = await this.inspect(base + '.json', false, { properties: [], events: false });
     if (json) return json.registrations;
     for (const suffix of ['.config.ts', '.config.js', '.ts', '.js']) {
       const info = await this.inspect(base + suffix);
@@ -358,8 +375,8 @@ class ComponentProject {
   }
 
   /** 根据标签注册解析组件；同一请求中的重复父节点共用结果。 */
-  private component(name: string, includeInstance = false, locationOnly = false): Promise<ComponentInfo | undefined> {
-    const key = `${name}:${includeInstance}:${locationOnly}`;
+  private component(name: string, includeInstance = false, locationOnly = false, inspection: ComponentInspection = {}, includeSlots = true): Promise<ComponentInfo | undefined> {
+    const key = JSON.stringify([name, includeInstance, locationOnly, inspection, includeSlots]);
     let pending = this.components.get(key);
     if (!pending) {
       pending = (async () => {
@@ -375,7 +392,7 @@ class ComponentProject {
           this.reader.navigation?.record({ code: 'path', message: `沿组件 ${name} 的注册 ${registered.path} 定位实现。`, uri: target });
           const script = /\.wxml$/i.test(target) ? undefined : locationOnly && this.scripts.locate
             ? { definitions: await this.scripts.locate(this.request, target), description: '', properties: [], registrations: {} }
-            : await this.inspect(target, includeInstance);
+            : await this.inspect(target, includeInstance, inspection);
           if (locationOnly && script?.definitions.length) {
             implementations.push({ ...script, slots: [] });
             continue;
@@ -388,16 +405,18 @@ class ComponentProject {
             const content = await this.reader.read(candidate);
             if (content) { template = candidate; document = content; break; }
           }
-          const slots = locationOnly ? [] : await this.slots(template);
+          const slots = locationOnly || !includeSlots ? [] : await this.slots(template);
           const firstTag = document && scanTags(document.text).next().value;
           const fallback: ComponentLocation[] = firstTag ? [{ uri: template, range: firstTag.nameRange, ...(document?.version !== undefined ? { version: document.version } : {}) }] : [];
           implementations.push({ ...script, description: script?.description || (document && firstTag ? leadingComment(document.text, firstTag.start) : ''),
             definitions: script?.definitions.length ? script.definitions : fallback,
             properties: script?.properties ?? [], registrations: script?.registrations ?? {}, events: script?.events ?? [], slots });
         }
+        const dependencies = [...this.revisions].map(([uri, revision]) => ({ uri, revision })).concat(this.files?.dependencies ?? [], implementations.flatMap((item) => item.dependencies ?? []));
+        if (this.reader.revision && dependencies.some((item) => this.reader.revision!(item.uri) !== item.revision)) return undefined;
         // 已注册但源码不可用的内层组件仍是插槽边界，不能误跳到外层组件。
         return { description: [...new Set(implementations.map((item) => item.description).filter(Boolean))].join('\n'), definitions: implementations.flatMap((item) => item.definitions), properties: implementations.flatMap((item) => item.properties), registrations: {}, events: implementations.flatMap((item) => item.events ?? []), slots: implementations.flatMap((item) => item.slots), members: implementations.flatMap((item) => item.members ?? []),
-          complete: implementations.every((item) => item.complete !== false), dependencies: [...this.revisions].map(([uri, revision]) => ({ uri, revision })).concat(implementations.flatMap((item) => item.dependencies ?? [])) };
+          complete: implementations.every((item) => item.complete !== false), dependencies };
       })();
       this.components.set(key, pending);
     }
@@ -455,7 +474,7 @@ class ComponentProject {
     const tag = tagAt(document.text, offset);
     if (!tag || this.request.cancellation.isCancellationRequested) return undefined;
     if (contains(tag.nameRange, offset)) {
-      const component = await this.component(tag.name, false, locationOnly);
+      const component = await this.component(tag.name, false, locationOnly, { properties: [], events: false, registrations: false });
       return component ? { title: `<${tag.name}>`, description: [component.description, component.slots.length ? `插槽：${[...new Set(component.slots.map((slot) => slot.name || '默认'))].join('、')}` : ''].filter(Boolean).join('\n'), range: tag.nameRange, definitions: component.definitions } : undefined;
     }
     if (tag.closing) return undefined;
@@ -465,15 +484,15 @@ class ComponentProject {
       const name = attribute.valueRange ? document.text.slice(attribute.valueRange.start, attribute.valueRange.end) : '';
       if (name.includes('{{')) return undefined;
       for (const parent of ancestors(document.text, tag.start).reverse()) {
-        const component = await this.component(parent.name);
+        const component = await this.component(parent.name, false, false, { properties: [], events: false, registrations: false });
         if (!component) continue;
         const slots = component.slots.filter((slot) => slot.name === name);
         return slots.length ? { title: `插槽 ${name || '默认'} · <${parent.name}>`, description: slots.map((slot) => slot.description).filter(Boolean).join('\n') || '此插槽在组件模板中定义。', range: attribute.valueRange && contains(attribute.valueRange, offset) ? attribute.valueRange : attribute.range, definitions: slots.map((slot) => slot.definition) } : undefined;
       }
       return undefined;
     }
-    const component = await this.component(tag.name);
     const event = eventAttribute(attribute.name);
+    const component = await this.component(tag.name, false, false, { properties: event ? [] : [attribute.name, camel(attribute.name)], events: !!event, registrations: false }, false);
     if (event && offset <= attribute.range.end) {
       const events = component?.events?.filter((item) => item.name === event.name) ?? [];
       return events.length ? { title: `自定义事件 ${event.name}`, description: [...new Set(events.map(eventDescription))].join('\n\n'),
@@ -540,10 +559,11 @@ class ComponentProject {
 
 /** 模板通过脚本端口获得实现信息，无需依赖脚本语言模块内部。 */
 export function createComponentResolver(reader: WorkspaceReader, scripts: (reader: WorkspaceReader) => ComponentScriptResolver, options: (uri: string) => ComponentOptions = () => ({})): ComponentResolver {
+  const inspections = createComponentCache(reader);
   /** 未命名缓冲区没有相对目录，交给内置提供器处理。 */
   const project = (request: LanguageRequest): ComponentProject | undefined => {
     try { new URL('./', request.document.uri); } catch { return undefined; }
-    return new ComponentProject(reader, scripts, request, options(request.document.uri));
+    return new ComponentProject(reader, scripts, request, options(request.document.uri), inspections);
   };
   /** 每次提供器请求独立解析，避免引用未保存之前的结果。 */
   const target = (request: LanguageRequest, locationOnly = false): Promise<ComponentTarget | undefined> => {

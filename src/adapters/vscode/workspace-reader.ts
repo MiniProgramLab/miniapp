@@ -82,16 +82,18 @@ export function createWorkspaceReader(subscriptions?: vscode.Disposable[]): Work
       return vscode.workspace.getWorkspaceFolder(vscode.Uri.parse(value))?.uri.toString();
     },
     /** 限定在当前工作区发现模板，合并尚未保存到磁盘的新文档。 */
-    async findFiles(value, pattern, limit) {
+    async findFiles(value, pattern, limit, scope) {
       const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.parse(value));
       if (!folder) return [];
-      const revision = tracking.observe(folder.uri.toString());
-      const include = new vscode.RelativePattern(folder, pattern);
-      const exclude = new vscode.RelativePattern(folder, '**/{node_modules,dist,build,.git,.pnpm-store}/**');
-      const key = `${folder.uri.toString()}:${pattern}:${limit}`;
+      const root = scope ? vscode.Uri.parse(scope.root) : folder.uri;
+      if (root.toString().replace(/\/$/, '') !== folder.uri.toString().replace(/\/$/, '') && !root.toString().startsWith(folder.uri.toString().replace(/\/$/, '') + '/')) return [];
+      const revision = tracking.observe(root.toString());
+      const include = new vscode.RelativePattern(root, pattern);
+      const exclude = new vscode.RelativePattern(root, '{**/{node_modules,dist,build,.git,.pnpm-store,.worktrees}/**,**/{.claude,.codex}/worktrees/**}');
+      const key = `${root.toString()}:${pattern}:${limit}`;
       const cached = catalogs.get(key);
       const files = cached?.revision === revision ? cached.files : await vscode.workspace.findFiles(include, exclude, limit);
-      if (tracking.observe(folder.uri.toString()) === revision) {
+      if (tracking.observe(root.toString()) === revision) {
         catalogs.delete(key); catalogs.set(key, { revision, files });
         while (catalogs.size > 12 || [...catalogs.values()].reduce((total, item) => total + item.files.length, 0) > 50000) catalogs.delete(catalogs.keys().next().value!);
       }

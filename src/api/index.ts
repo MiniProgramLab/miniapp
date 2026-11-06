@@ -3,10 +3,10 @@ export type { NavigationStep, NavigationTracking, NavigationReport } from './nav
 export type { CheckProvider, CheckFile, CheckFinding, CheckIssue, CheckReport, CheckOptions, CheckResult } from './checks';
 export type { OutlineSymbol, FoldingRegion } from './structure';
 import type { OutlineSymbol, FoldingRegion } from './structure';
-export type { RouteAccess, RouteManifest, RouteResult, RouteResolver, RouteContextResolver, PageQuery } from './routes';
+export type { RouteAccess, RouteManifest, RouteResult, RouteResolver, RouteContextResolver, PageQuery, RouteDocumentResolver } from './routes';
 import type { RouteAccess, RouteManifest } from './routes';
 import type { ProjectFileResolver } from './files';
-export type { ComponentMember, ComponentLocation, ComponentProperty, ComponentEvent, ComponentScriptInfo, ComponentScriptResolver, ComponentResolver, ComponentUsages } from './components';
+export type { ComponentMember, ComponentLocation, ComponentProperty, ComponentEvent, ComponentScriptInfo, ComponentScriptResolver, ComponentInspection, ComponentResolver, ComponentUsages } from './components';
 export type { EventForwarding, StaticString, InstanceAccess, CallSignature, DatasetAccess, ScriptAdapter, ScriptModule, SemanticType, HandlerSignature, TextEdit, RenameTarget, Diagnostic, Reference, CodeAction, ExpressionInfo } from './semantic';
 import type { InstanceAccess, CallSignature, DatasetAccess, ScriptModule, HandlerSignature, TextEdit, RenameTarget, Diagnostic, Reference, CodeAction, ExpressionInfo } from './semantic';
 
@@ -139,7 +139,7 @@ export interface WorkspaceReader {
   /** 返回当前文件所属工作区根目录的 URI。 */
   root(uri: string): string | undefined;
   /** 可选的工作区文件发现能力，仅枚举指定模式且限制数量。 */
-  findFiles?(uri: string, pattern: string, limit: number): Promise<readonly string[]>;
+  findFiles?(uri: string, pattern: string, limit: number, scope?: { readonly root: string }): Promise<readonly string[]>;
 }
 
 /** 模板通过此端口解析样式类，不导入 CSS 模块的内部实现。 */

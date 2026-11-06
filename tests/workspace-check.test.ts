@@ -82,3 +82,13 @@ test('大量或超大执行错误保持有界报告，不能伪装成检查完�
   assert.equal(large.report.status, 'incomplete'); assert.equal(large.report.issues.length, 1);
   assert.ok(JSON.stringify(large.report).length < 1000);
 });
+
+test('内存命中的批量检查仍让出线程，排队的取消及时终止当前文件', { timeout: 2000 }, async () => {
+  const cancellation = { isCancellationRequested: false };
+  const result = await checkWorkspace(reader(), files, [provider(async (request) => {
+    setImmediate(() => { cancellation.isCancellationRequested = true; });
+    while (await request.checkpoint!(cancellation)) { /* 模拟无文件等待的语义批次。 */ }
+    return [finding];
+  })], { cancellation });
+  assert.equal(result.report.status, 'cancelled'); assert.equal(result.report.checked, 0); assert.deepEqual(result.report.findings, []);
+});

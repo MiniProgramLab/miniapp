@@ -10,6 +10,7 @@
 !scripts/vendor/archify/LICENSE
 !scripts/vendor/wechat-api-typings/LICENSE
 !dist/extension.cjs
+!dist/compute-worker.cjs
 !dist/typescript.cjs
 !dist/api/**/*.d.ts
 !dist/typescript-lib/*.d.ts

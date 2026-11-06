@@ -53,10 +53,18 @@ export interface ComponentScriptInfo {
   readonly registrations: Readonly<Record<string, string>>;
 }
 
-/** 组件解析依赖此端口，不依赖 TypeScript 编译器或脚本模块内部。 */
+/** 按交互选择组件元数据，省略时保留完整查询。 */
+export interface ComponentInspection {
+  /** 留空读取全部参数，空数组表示本次无需参数。 */
+  readonly properties?: readonly string[];
+  readonly events?: boolean;
+  readonly registrations?: boolean;
+}
+
+/** 组件脚本查询允许按实际交互选择需要的元数据。 */
 export interface ComponentScriptResolver {
   /** 读取脚本或 JSON 配置，绝不执行工程代码。 */
-  inspect(request: LanguageRequest, uri: string, includeInstance?: boolean): Promise<ComponentScriptInfo | undefined>;
+  inspect(request: LanguageRequest, uri: string, includeInstance?: boolean, inspection?: ComponentInspection): Promise<ComponentScriptInfo | undefined>;
   /** 标签跳转只需注册位置，复杂包装器仍可回退到完整语义解析。 */
   locate?(request: LanguageRequest, uri: string): Promise<readonly ComponentLocation[]>;
 }

@@ -157,6 +157,19 @@ export function createLanguageHost(logger: Logger, reader?: WorkspaceReader): La
       if (!interactions) for (const defer of deferDiagnostics) defer(false);
     }
   };
+  /** 工作区检查与可见诊断共同让出交互，等待期间仍可立即取消。 */
+  const background = async (request: LanguageRequest, provide: (request: LanguageRequest) => LanguageResult<readonly import('../../api').Diagnostic[]>) => {
+    const yieldTime = request.checkpoint ?? createCheckpoint(4);
+    const checkpoint = async (cancellation: import('../../api').Cancellation): Promise<boolean> => {
+      if (!await yieldTime(cancellation)) return false;
+      while (interactions || Date.now() < resumeAfter) {
+        if (cancellation.isCancellationRequested) return false;
+        await new Promise<void>((resolve) => setTimeout(resolve, 25));
+      }
+      return !cancellation.isCancellationRequested;
+    };
+    return await checkpoint(request.cancellation) ? provide({ ...request, checkpoint }) : [];
+  };
   return {
     /** 每次开始检查时获取注册快照，执行期间仍核验提供器存活状态。 */
     checkProviders: () => [...checkers.values()],
@@ -356,7 +369,7 @@ export function createLanguageHost(logger: Logger, reader?: WorkspaceReader): La
         }));
         const diagnostics = features.diagnostics;
         if (diagnostics) {
-          checkers.set(plugin.id, { id: plugin.id, name: plugin.displayName, languages: plugin.languages, active: () => active, provide: (request) => diagnostics.provide(request) });
+          checkers.set(plugin.id, { id: plugin.id, name: plugin.displayName, languages: plugin.languages, active: () => active, provide: (request) => background(request, (current) => diagnostics.provide(current)) });
           resources.add({ dispose: () => checkers.delete(plugin.id) });
           const collection = resources.add(vscode.languages.createDiagnosticCollection(plugin.id));
           const pending = new Map<string, { source: vscode.CancellationTokenSource; timer: ReturnType<typeof setTimeout>; document: vscode.TextDocument; running: boolean }>();

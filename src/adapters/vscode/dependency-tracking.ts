@@ -5,15 +5,23 @@ import { workspaceRevisionKey } from '../../core/workspace-revisions';
 /** 异步依赖作用域相互隔离，缓存命中时的修订读取也计入消费关系。 */
 export function createDependencyTracking(revision: (uri: string) => string) {
   const scopes = new AsyncLocalStorage<Map<string, string>>();
+  /** 仅复用纯 URI 规范化结果，文件修订仍在每次观察时实时读取。 */
+  const normalized = new Map<string, string>();
   return {
     /** 卸载时关闭异步作用域钩子，不保留旧语言请求。 */
-    dispose(): void { scopes.disable(); },
+    dispose(): void { scopes.disable(); normalized.clear(); },
     /** 读取和探测保留规范 URI 与当时修订，不能用检查结束时的新版本替代。 */
     observe(uri: string): string {
       const value = revision(uri);
       const dependencies = scopes.getStore();
-      const key = workspaceRevisionKey(uri);
-      if (dependencies && !dependencies.has(key)) dependencies.set(key, value);
+      if (dependencies) {
+        let key = normalized.get(uri);
+        if (key === undefined) {
+          key = workspaceRevisionKey(uri); normalized.set(uri, key);
+          if (normalized.size > 8192) normalized.delete(normalized.keys().next().value!);
+        }
+        if (!dependencies.has(key)) dependencies.set(key, value);
+      }
       return value;
     },
     /** 并发请求独立收集，嵌套作用域的依赖仍归入实际调用者。 */

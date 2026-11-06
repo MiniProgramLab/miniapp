@@ -52,7 +52,9 @@ export class Values {
 
   /** 从真实声明生成值，函数重载优先落到有实现的方法。 */
   private symbols(symbol: ts.Symbol, bindings: ReadonlyMap<ts.Symbol | ts.ParameterDeclaration, Value>): Value[] {
-    const declarations = this.original(symbol).declarations ?? [];
+    const original = this.original(symbol);
+    // 重映射键的合成符号沿编译器提供的原符号取声明，保留真实说明和坐标。
+    const declarations = original.declarations ?? [...new Set(this.checker.getRootSymbols(original).flatMap((item) => item.declarations ?? []))];
     const implementations = declarations.filter((node) => ts.isFunctionLike(node) && 'body' in node && node.body);
     return (implementations.length ? implementations : declarations).map((node) => {
       const declaration = 'name' in node && node.name && typeof node.name === 'object' ? node.name as ts.Node : node;
@@ -132,7 +134,7 @@ export class Values {
   /** 静态键优先读取对象成员；未知数组下标保留元素候选。 */
   access(value: Value, keys: readonly string[], seen = new Set<ts.Node>()): Value[] {
     if (!keys.length) return this.indexed(value, undefined, seen);
-    const fields = this.fields(value, seen);
+    const fields = this.fields(value, seen, new Set(keys));
     return [...new Set(keys)].flatMap((key) => fields.get(key) ?? (/^(?:0|[1-9]\d*)$/.test(key) ? this.element(value, Number(key), seen) : this.indexed(value, key, seen)));
   }
 
@@ -402,13 +404,13 @@ export class Values {
     return expressions.flatMap((expression) => this.resolve({ node: expression, bindings }, seen));
   }
 
-  /** 合并对象成员时遵循展开顺序；条件分支保留多个可能定义。 */
-  fields(value: Value, seen = new Set<ts.Node>()): Map<string, Value[]> {
+  /** 按查询选择成员，名称补全不展开字段类型；展开顺序和条件分支保持一致。 */
+  fields(value: Value, seen = new Set<ts.Node>(), names?: ReadonlySet<string>, details = true): Map<string, Value[]> {
     const result = new Map<string, Value[]>();
     for (const resolved of this.resolve(value, seen)) {
       if (seen.has(resolved.node)) continue;
       if (resolved.members) {
-        for (const [name, items] of resolved.members) result.set(name, [...(result.get(name) ?? []), ...items]);
+        for (const [name, items] of resolved.members) if (!names || names.has(name)) result.set(name, [...(result.get(name) ?? []), ...items]);
         continue;
       }
       if (resolved.template || resolved.items) continue;
@@ -417,7 +419,7 @@ export class Values {
       if (!resolved.runtimeType && ts.isObjectLiteralExpression(resolved.node)) {
         for (const property of resolved.node.properties) {
           if (ts.isSpreadAssignment(property)) {
-            for (const [name, values] of this.fields({ ...resolved, node: property.expression }, visited)) own.set(name, values);
+            for (const [name, values] of this.fields({ ...resolved, node: property.expression }, visited, names, details)) own.set(name, values);
           } else {
             const name = this.name(property.name);
             if (name) own.set(name, [{ node: property, declaration: property.name, bindings: resolved.bindings }]);
@@ -434,7 +436,7 @@ export class Values {
           if (statement && ts.isExpressionStatement(statement)) for (const [name, items] of this.fields({ ...resolved, node: statement.expression }, visited)) own.set(name, items);
         }
         const symbol = this.checker.getSymbolAtLocation(resolved.node);
-        if (symbol && !/\.json$/i.test(resolved.node.fileName)) for (const member of this.checker.getExportsOfModule(symbol)) own.set(member.name, this.symbols(member, resolved.bindings));
+        if (symbol && !/\.json$/i.test(resolved.node.fileName)) for (const member of this.checker.getExportsOfModule(symbol)) if (!names || names.has(member.name)) own.set(member.name, details ? this.symbols(member, resolved.bindings) : []);
         // CommonJS 的运行时导出没有可靠的类型别名链，按静态赋值顺序读取。
         for (const statement of resolved.node.statements) {
           if (!ts.isExpressionStatement(statement) || !ts.isBinaryExpression(statement.expression) || statement.expression.operatorToken.kind !== ts.SyntaxKind.EqualsToken) continue;
@@ -442,20 +444,25 @@ export class Values {
           const path = left.getText(resolved.node).replace(/\s/g, '');
           if (path === 'module.exports') {
             own.clear();
-            for (const [name, items] of this.fields({ node: right, bindings: resolved.bindings }, visited)) own.set(name, items);
+            for (const [name, items] of this.fields({ node: right, bindings: resolved.bindings }, visited, names, details)) own.set(name, items);
           } else if (/^(?:module\.)?exports\.[\w$]+$/.test(path) && ts.isPropertyAccessExpression(left)) {
             own.set(left.name.text, [{ node: right, declaration: left.name, bindings: resolved.bindings }]);
           }
         }
       }
-      if (!ts.isSourceFile(resolved.node)) {
+      // 无展开、计算键或显式类型的对象字段已完整，不推导整页对象的无关类型。
+      const literalFields = !resolved.runtimeType && !resolved.type && ts.isObjectLiteralExpression(resolved.node)
+        && resolved.node.properties.every((property) => !ts.isSpreadAssignment(property) && this.name(property.name) !== undefined);
+      if (!ts.isSourceFile(resolved.node) && !literalFields) {
         const classSymbol = (ts.isClassDeclaration(resolved.node) || ts.isClassExpression(resolved.node)) && resolved.node.name ? this.checker.getSymbolAtLocation(resolved.node.name) : undefined;
         const type = resolved.runtimeType ?? resolved.type ?? (classSymbol ? this.checker.getTypeOfSymbolAtLocation(classSymbol, resolved.node) : this.checker.getTypeAtLocation(resolved.node));
         const inferred = new Map<string, Value[]>();
         for (const part of type.isUnion() ? type.types : [type]) {
           for (const member of this.checker.getPropertiesOfType(part)) {
+            if (names && !names.has(member.name)) continue;
             const declared = !!(resolved.runtimeType || resolved.type);
             if (!own.has(member.name) || declared) {
+              if (!details) { inferred.set(member.name, []); continue; }
               // 显式对象类型覆盖初始化值的窄类型，成员仍保留原始声明位置。
               const items = own.get(member.name) ?? this.symbols(member, resolved.bindings);
               inferred.set(member.name, [...(inferred.get(member.name) ?? []), ...items.map((item) => declared ? { ...item, runtimeType: this.checker.getTypeOfSymbolAtLocation(member, resolved.node) } : item)]);
@@ -466,7 +473,7 @@ export class Values {
         if (resolved.runtimeType || resolved.type) for (const name of own.keys()) if (!inferred.has(name)) own.delete(name);
         for (const [name, items] of inferred) own.set(name, items);
       }
-      for (const [name, values] of own) result.set(name, [...(result.get(name) ?? []), ...values]);
+      for (const [name, values] of own) if (!names || names.has(name)) result.set(name, [...(result.get(name) ?? []), ...values]);
     }
     return result;
   }

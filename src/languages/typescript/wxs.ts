@@ -41,7 +41,7 @@ export async function createWxsContext(reader: WorkspaceReader, request: Languag
 }
 
 /** 外部模块和内联模块共用 JS 类型检查器，内联位置映射回原始 WXML。 */
-export async function queryWxs(reader: WorkspaceReader, request: LanguageRequest, expression?: TemplateExpression, options: ScriptOptions = {}, rename = false): Promise<WxsResult | undefined> {
+export async function queryWxs(reader: WorkspaceReader, request: LanguageRequest, expression?: TemplateExpression, options: ScriptOptions = {}, rename = false, mode: 'all' | 'definition' | 'hover' | 'completion' = 'all', onlyName?: string): Promise<WxsResult | undefined> {
   if (request.cancellation.isCancellationRequested || expression?.event) return undefined;
   const tree = expression && parse(expression.text);
   const selected = tree && reference(tree, request.offset - expression!.range.start + 1);
@@ -68,28 +68,42 @@ export async function queryWxs(reader: WorkspaceReader, request: LanguageRequest
   if (module && !embedded && ts.isIdentifier(node) && node.text === module.name) {
     return { ...empty, definitions: [{ uri: request.document.uri, range: module.nameRange, originRange, version: request.document.version }] };
   }
-  const candidates = embedded || !expression ? values.resolve(values.value(node)) : evaluate(node, roots, values);
+  const candidates = mode === 'completion' ? [] : embedded || !expression ? values.resolve(values.value(node)) : evaluate(node, roots, values);
   const definitions: Definition[] = [];
   const descriptions: string[] = [];
-  for (const candidate of candidates) {
+  for (const candidate of mode === 'completion' ? [] : candidates) {
     const raw = rename && candidate.declaration ? [candidate] : values.resolve(candidate);
     for (const resolved of raw) {
       if (ts.isIdentifier(resolved.node) && !resolved.declaration || resolved.node === program.entry) continue;
       const declaration = resolved.declaration ?? resolved.node;
-      definitions.push({ ...location(declaration), originRange, ...(rename && ts.isShorthandPropertyAssignment(declaration.parent) ? { renameSuffix: ': ' + declaration.getText() } : {}) });
-      project.explainDefinition(declaration.getSourceFile().fileName);
-      const doc = declarationDocumentation(declaration) || declarationDocumentation(candidate.declaration ?? candidate.node);
-      descriptions.push([doc, values.checker.typeToString(values.checker.getTypeAtLocation(resolved.node), resolved.node, ts.TypeFormatFlags.NoTruncation)].filter(Boolean).join('\n'));
+      if (mode === 'all' || mode === 'definition') {
+        definitions.push({ ...location(declaration), originRange, ...(rename && ts.isShorthandPropertyAssignment(declaration.parent) ? { renameSuffix: ': ' + declaration.getText() } : {}) });
+        project.explainDefinition(declaration.getSourceFile().fileName);
+      }
+      if (mode === 'all' || mode === 'hover') {
+        const doc = declarationDocumentation(declaration) || declarationDocumentation(candidate.declaration ?? candidate.node);
+        descriptions.push([doc, values.checker.typeToString(values.checker.getTypeAtLocation(resolved.node), resolved.node)].filter(Boolean).join('\n'));
+      }
     }
   }
   const completions: Completion[] = [];
   const access = ts.isPropertyAccessExpression(node) ? node : token.parent && ts.isPropertyAccessExpression(token.parent) ? token.parent : undefined;
-  if (access && request.offset >= access.name.getStart() + base) {
+  if ((mode === 'all' || mode === 'completion') && access && request.offset >= access.name.getStart() + base) {
     const range = { start: access.name.getStart() + base, end: access.name.end + base };
     const prefix = request.document.text.slice(range.start, request.offset);
     const parents = embedded || !expression ? values.resolve(values.value(access.expression)) : evaluate(access.expression, roots, values);
     for (const parent of parents) for (const [name, members] of values.fields(parent)) {
-      if (!name.startsWith(prefix)) continue;
+      if (onlyName !== undefined && onlyName !== name || !name.startsWith(prefix)) continue;
+      if (request.checkpoint && !await request.checkpoint(request.cancellation)) return empty;
+      if (request.deferCompletionDetails) {
+        completions.push({ label: name, kind: 'value', detail: 'WXS 成员', documentation: '', insertText: name, range, resolve: async (cancellation) => {
+          if (cancellation.isCancellationRequested) return undefined;
+          const result = await queryWxs(reader, { ...request, cancellation, deferCompletionDetails: false }, expression, options, false, 'completion', name);
+          const item = result?.completions.find((entry) => entry.label === name);
+          return item ? { detail: item.detail, documentation: item.documentation } : undefined;
+        } });
+        continue;
+      }
       const resolved = members.flatMap((member) => values.resolve(member));
       completions.push({ label: name, kind: 'value', detail: resolved.map((item) => values.checker.typeToString(values.checker.getTypeAtLocation(item.node))).join(' | '), documentation: resolved.map((item) => declarationDocumentation(item.declaration ?? item.node)).filter(Boolean).join('\n'), insertText: name, range });
     }

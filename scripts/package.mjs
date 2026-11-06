@@ -41,6 +41,7 @@ try {
   const packagedFiles = await listFiles({ cwd: staging, packageManager: PackageManager.Npm });
   if (pluginFiles.some((file) => !packagedFiles.includes(file))) throw new Error('安装包缺少原生 TypeScript 样式导入适配器。');
   if (!packagedFiles.includes('CHANGELOG.md')) throw new Error('安装包缺少版本变更日志。');
+  if (!packagedFiles.includes('dist/compute-worker.cjs')) throw new Error('安装包缺少语义工作线程。');
 
   await createVSIX({
     cwd: staging, packagePath: path.join(root, 'dist', `${manifest.name}-${manifest.version}.vsix`),

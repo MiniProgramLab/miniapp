@@ -36,6 +36,7 @@ class ProjectResolver implements ProjectFileResolver {
   private readonly revisions = new Map<string, string>();
   private readonly documents = new Map<string, Promise<string | undefined>>();
   private profile: Promise<ProjectPaths> | undefined;
+  private profileDependencies: readonly import('../api').WorkspaceDependency[] = [];
   private bytes = 0;
 
   /** 本地配置依赖共用缓存和预算，循环导入不会重复读取。 */
@@ -75,6 +76,7 @@ class ProjectResolver implements ProjectFileResolver {
   /** 限制配置读取数量和体积，损坏配置按未识别规则处理。 */
   private async read(uri: string): Promise<string | undefined> {
     if (this.cancellation?.isCancellationRequested) return undefined;
+    this.reader.revision?.(uri);
     if (!this.documents.has(uri)) {
       if (this.documents.size >= 256) { this.reader.navigation?.record({ code: 'budget', message: '配置及包入口探测达到二百五十六份文件上限，路径候选可能不完整。' }); return undefined; }
       const revision = this.reader.revision;
@@ -101,6 +103,19 @@ class ProjectResolver implements ProjectFileResolver {
       })());
     }
     return this.documents.get(uri);
+  }
+
+  /** 配置只发现一次，后续模块重播其实际配置依赖。 */
+  private paths(): Promise<ProjectPaths> {
+    return this.profile ??= this.discover().then((profile) => { this.profileDependencies = this.dependencies; return profile; });
+  }
+
+  /** 解析链独立记录包探测，避免并发导入互相扩大失效范围。 */
+  async resolve(reference: string, from: string, kind: FileReferenceKind) {
+    const result = this.reader.capture ? await this.reader.capture(() => this.candidates(reference, from, kind)) : { value: await this.candidates(reference, from, kind), dependencies: this.dependencies };
+    const dependencies = new Map(result.dependencies.map((item) => [item.uri, this.revisions.get(item.uri) ?? item.revision]));
+    for (const item of this.profileDependencies) if (!dependencies.has(item.uri)) dependencies.set(item.uri, item.revision);
+    return { candidates: result.value, dependencies: [...dependencies].map(([uri, revision]) => ({ uri, revision })) };
   }
 
   /** 从最近 package、应用入口和项目配置识别归属，工作区为搜索边界。 */
@@ -303,7 +318,7 @@ class ProjectResolver implements ProjectFileResolver {
     if (/^(?:plugin|dynamicLib|https?|data):|^\/\//i.test(reference)) { this.reader.navigation?.record({ code: 'unsupported', message: '外部资源或动态插件地址不属于本地源码导航：' + reference }); return []; }
     try { new URL('./', from); } catch { return []; }
     reference = reference.slice(reference.lastIndexOf('!') + 1).replace(/\?.*$|(?<=.)#.*$/, '');
-    const profile = await (this.profile ??= this.discover());
+    const profile = await this.paths();
     const bases: string[] = [];
     if (/^[a-z][\w+.-]*:\/\//i.test(reference)) {
       const uri = new URL(reference);

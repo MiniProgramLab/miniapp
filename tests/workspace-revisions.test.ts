@@ -68,3 +68,16 @@ test('大型工程的一万多个探测保持修订稳定，超过有界容量�
   for (let index = 15000; index < 66000; index++) revisions.revision(root + 'probe-' + index + '.ts');
   assert.notEqual(revisions.revision(root), first);
 });
+
+test('嵌套工作树变化不失效外层发现，直接打开的工作树仍正常刷新', () => {
+  const revisions = createWorkspaceRevisions(), root = 'file:///workspace/';
+  const own = revisions.revision(root), nested = root + '.claude/worktrees/active/';
+  const current = revisions.revision(nested), imported = revisions.revision(nested + 'shared.d.ts');
+  revisions.changed(nested + 'created.d.ts', root, true);
+  assert.equal(revisions.revision(root), own); assert.notEqual(revisions.revision(nested), current);
+  revisions.changed(nested + 'shared.d.ts', root);
+  assert.notEqual(revisions.revision(nested + 'shared.d.ts'), imported);
+  const active = revisions.revision(nested);
+  revisions.changed(nested + 'another.d.ts', nested, true);
+  assert.notEqual(revisions.revision(nested), active);
+});

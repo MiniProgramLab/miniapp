@@ -17,4 +17,6 @@ export interface ProjectFileResolver {
   readonly dependencies?: readonly import('./index').WorkspaceDependency[];
   /** 按源码优先顺序返回候选 URI，不执行配置或构建项目。 */
   candidates(reference: string, from: string, kind: FileReferenceKind): Promise<readonly string[]>;
+  /** 返回本次候选实际使用的依赖，供并发模块分别缓存。 */
+  resolve?(reference: string, from: string, kind: FileReferenceKind): Promise<{ readonly candidates: readonly string[]; readonly dependencies: readonly import('./index').WorkspaceDependency[] }>;
 }

@@ -2,7 +2,7 @@
 export function workspaceRevisionKey(value: string): string {
   try {
     const uri = new URL(value);
-    if (uri.pathname.length > 1) uri.pathname = uri.pathname.replace(/\/$/, '');
+    if (uri.pathname.length > 1 && uri.pathname.endsWith('/')) uri.pathname = uri.pathname.slice(0, -1);
     return uri.href;
   } catch { return value; }
 }
@@ -30,7 +30,7 @@ export function createWorkspaceRevisions() {
       bump(uri);
       if (!structural) return;
       const boundary = root && workspaceRevisionKey(root);
-      const ignored = /\/(?:node_modules|dist|build|\.git|\.pnpm-store)(?:\/|$)/;
+      const ignored = /\/(?:node_modules|dist|build|\.git|\.pnpm-store|\.worktrees|(?:\.claude|\.codex)\/worktrees)(?:\/|$)/;
       const excluded = ignored.test(uri);
       let current = uri;
       for (let depth = 0; depth < 64; depth++) {

@@ -1,5 +1,11 @@
 import type { Completion, Definition, Diagnostic, Hover, LanguageRequest, SemanticType, StaticString, TextRange, WorkspaceDependency } from './index';
 
+/** JSON 语法计算可由宿主隔离执行，返回值始终保留原始坐标。 */
+export interface RouteDocumentResolver {
+  manifest(uri: string, text: string): import('./index').LanguageResult<RouteManifest>;
+  accesses(request: LanguageRequest): import('./index').LanguageResult<readonly RouteAccess[]>;
+}
+
 /** 路由只承载静态结果，不向跨语言消费者暴露编译器对象。 */
 export interface RouteAccess {
   readonly method: 'navigateTo' | 'redirectTo' | 'switchTab' | 'reLaunch';

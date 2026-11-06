@@ -1,5 +1,6 @@
 import ts from 'typescript';
-import type { CallSignature, ComponentMember, ComponentEvent, ComponentLocation, ComponentProperty, ComponentScriptInfo, ComponentScriptResolver, LanguageRequest, SemanticType, WorkspaceReader } from '../../api';
+import type { ComponentInspection, CallSignature, ComponentMember, ComponentEvent, ComponentLocation, ComponentProperty, ComponentScriptInfo, ComponentScriptResolver, LanguageRequest, SemanticType, WorkspaceReader } from '../../api';
+
 import { ScriptProject } from './project';
 import type { ScriptOptions } from './project';
 import { Values } from './values';
@@ -8,6 +9,9 @@ import { documentation } from './documentation';
 import { componentEvents, componentFunctions } from './events';
 import { semanticType } from './semantic-types';
 import { directRegistrations, registrationSource } from './direct-definition';
+
+/** 同一不可变类型图复用元数据，受限结果保留原完整性标记。 */
+const programMetadata = new WeakMap<ts.Program, Map<string, { info: ComponentScriptInfo; weight: number }>>();
 
 /** 只返回实现源码；类型声明可以参与推断，但不能成为跳转目标。 */
 function location(node: ts.Node, project: ScriptProject): ComponentLocation | undefined {
@@ -69,17 +73,18 @@ function nativeDefault(type: string): string {
 }
 
 /** 静态提取参数，同时保留对象展开与 Behavior 中的实际字段位置。 */
-function properties(values: Values, project: ScriptProject, value: Value, seen = new Set<ts.Node>()): Map<string, ComponentProperty> {
+function properties(values: Values, project: ScriptProject, value: Value, seen = new Set<ts.Node>(), selected?: readonly string[]): Map<string, ComponentProperty> {
   const result = new Map<string, ComponentProperty>();
   for (const resolved of values.resolve(value)) {
     if (seen.has(resolved.node) || seen.size > 80 || project.cancelled) continue;
     const visited = new Set(seen).add(resolved.node);
     const fields = values.fields(resolved);
     for (const group of ['behaviors', 'mixins']) for (const list of fields.get(group) ?? []) for (const inherited of values.elements(list)) {
-      for (const [name, property] of properties(values, project, inherited, visited)) result.set(name, property);
+      for (const [name, property] of properties(values, project, inherited, visited, selected)) result.set(name, property);
     }
     for (const group of ['properties', 'props']) for (const section of fields.get(group) ?? []) {
       for (const [name, declarations] of values.fields(section)) {
+        if (selected && !selected.includes(name)) continue;
         const implementations = declarations.filter((item) => !item.node.getSourceFile().isDeclarationFile);
         if (!implementations.length) continue;
         const item = implementations[0]!;
@@ -226,7 +231,7 @@ export function createComponentScriptResolver(reader: WorkspaceReader, options: 
       return definitions.length ? definitions : (await resolver.inspect(request, uri))?.definitions ?? [];
     },
     /** 每次查询建立只读快照，以便未保存的参数和注释立即生效。 */
-    async inspect(request: LanguageRequest, uri: string, includeInstance = false): Promise<ComponentScriptInfo | undefined> {
+    async inspect(request: LanguageRequest, uri: string, includeInstance = false, inspection: ComponentInspection = {}): Promise<ComponentScriptInfo | undefined> {
       if (request.cancellation.isCancellationRequested || /\.d\.[cm]?ts$/i.test(uri)) return undefined;
       if (/\.json$/i.test(uri)) {
         const document = await reader.read(uri);
@@ -241,11 +246,23 @@ export function createComponentScriptResolver(reader: WorkspaceReader, options: 
         const registered = parsed.config.usingComponents;
         const complete = registered === undefined || registered !== null && typeof registered === 'object' && !Array.isArray(registered) && Object.values(registered).every((value) => typeof value === 'string');
         for (const name of Object.keys(parsed.config.componentGenerics ?? {})) paths[name] ??= '';
-        return { ...(parsed.config.component === true ? { kind: 'component' as const } : {}), registrationComplete: complete, description: '', definitions: [], properties: [], registrations: paths };
+        return { ...(parsed.config.component === true ? { kind: 'component' as const } : {}), complete, registrationComplete: complete, description: '', definitions: [], properties: [], registrations: paths };
+      }
+      if (!includeInstance && inspection.properties?.length === 0 && inspection.events === false && inspection.registrations === false) {
+        const revision = reader.revision?.(uri);
+        const document = await reader.read(uri);
+        if (document && document.text.length <= 2_000_000 && !request.cancellation.isCancellationRequested) {
+          const source = registrationSource(uri, document.text), calls = directRegistrations(source);
+          if (calls.length === 1) return { complete: true, dependencies: revision === undefined ? [] : [{ uri, revision }], registrationComplete: false,
+            description: registrationDocumentation(calls[0]!), definitions: [{ uri, range: { start: calls[0]!.expression.getStart(source), end: calls[0]!.expression.end }, ...(document.version === undefined ? {} : { version: document.version }) }], properties: [], registrations: {}, events: [] };
+        }
       }
       const project = new ScriptProject(reader, request, { ...options(request.document.uri), preferImplementations: true });
       const created = await project.create(uri);
       if (!created) return undefined;
+      const key = JSON.stringify([uri, includeInstance, inspection, [...project.sources.keys()].map((source) => [source, project.documents.get(source)?.version])]);
+      const cached = programMetadata.get(created.program)?.get(key);
+      if (cached && !project.cancelled) return { ...cached.info, dependencies: project.dependencies };
       const values = new Values(created.program.getTypeChecker(), () => project.cancelled, (reference, from) => project.module(reference, from), project.adapters);
       const definitions: ComponentLocation[] = [];
       const props = new Map<string, ComponentProperty>();
@@ -265,14 +282,14 @@ export function createComponentScriptResolver(reader: WorkspaceReader, options: 
         }
         ts.forEachChild(node, configs);
       };
-      configs(created.entry);
+      if (inspection.registrations !== false) configs(created.entry);
       for (const registered of values.registration(created.entry)) {
-        events.push(...componentEvents(values, project, registered));
-        Object.assign(paths, registrations(values, registered));
+        if (inspection.events !== false) events.push(...componentEvents(values, project, registered));
+        if (inspection.registrations !== false) Object.assign(paths, registrations(values, registered));
         const candidates = values.resolve(registered);
         kind ??= candidates.find((candidate) => candidate.registrationKind)?.registrationKind;
-        registrationComplete ||= !!kind && candidates.every((candidate) => completeRegistrations(values, candidate));
-        if (ts.isCallExpression(registered.node) && !['Page', 'Component', 'VantComponent', 'Behavior'].includes(values.callName(registered.node))) {
+        registrationComplete ||= inspection.registrations !== false && !!kind && candidates.every((candidate) => completeRegistrations(values, candidate));
+        if (inspection.registrations !== false && ts.isCallExpression(registered.node) && !['Page', 'Component', 'VantComponent', 'Behavior'].includes(values.callName(registered.node))) {
           const adapter = values.adapter(registered.node);
           const argument = registered.node.arguments[adapter?.argument ?? 0];
           if (argument) {
@@ -288,13 +305,23 @@ export function createComponentScriptResolver(reader: WorkspaceReader, options: 
         const definition = target && location(target, project);
         if (definition) definitions.push(definition);
         description ||= registrationDocumentation(directCall ? registered.node : candidates[0]?.node ?? registered.node);
-        for (const candidate of candidates) for (const [name, property] of properties(values, project, candidate)) props.set(name, property);
+        for (const candidate of candidates) for (const [name, property] of properties(values, project, candidate, new Set(), includeInstance ? undefined : inspection.properties)) props.set(name, property);
         if (includeInstance) {
           for (const member of instanceMembers(values, project, registered, [...props.values()])) members.set(member.path.join('.'), member);
           instanceOwners.push(...componentFunctions(values, registered).map((node) => location(node, project)).filter((item): item is ComponentLocation => !!item));
         }
       }
-      return { ...(kind ? { kind } : {}), complete: !project.exhausted, dependencies: project.dependencies, registrationComplete: !project.exhausted && registrationComplete, description, definitions, properties: [...props.values()], registrations: paths, events, ...(includeInstance ? { members: [...members.values()], instanceOwners } : {}) };
+      const info = { ...(kind ? { kind } : {}), complete: !project.exhausted && !values.exhausted, dependencies: project.dependencies, registrationComplete: !project.exhausted && !values.exhausted && registrationComplete, description, definitions, properties: [...props.values()], registrations: paths, events, ...(includeInstance ? { members: [...members.values()], instanceOwners } : {}) };
+      if (!project.cancelled) {
+        const entries = programMetadata.get(created.program) ?? new Map();
+        const weight = key.length + JSON.stringify(info).length;
+        if (weight <= 2_000_000) {
+          entries.set(key, { info, weight });
+          while (entries.size > 32 || [...entries.values()].reduce((sum, entry) => sum + entry.weight, 0) > 2_000_000) entries.delete(entries.keys().next().value!);
+          programMetadata.set(created.program, entries);
+        }
+      }
+      return info;
     },
   };
   return resolver;

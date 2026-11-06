@@ -1,4 +1,5 @@
 import { posix as path } from 'node:path';
+import { createRouteDocumentResolver } from './route-syntax';
 import type { Completion, Definition, LanguageFeatures, LanguagePlugin, LanguageRequest, RouteContextResolver, RouteManifest, RouteResolver, RouteResult, ScriptDefinitionResolver, WorkspaceReader, WorkspaceText } from '../api';
 
 /** 路由目录记录应用根与实际读取依赖，跨工作区不共享内容。 */
@@ -28,7 +29,7 @@ const resultCaches = new WeakMap<NonNullable<WorkspaceReader['revision']>, { key
 const extensions = ['.ts', '.js', '.tsx', '.jsx', '.mts', '.cts', '.mjs', '.cjs', '.wxml'];
 
 /** 已有路径规则负责别名与构建映射，路由目录只解释页面注册。 */
-export function createRouteResolver(reader: WorkspaceReader, scripts: ScriptDefinitionResolver, contexts?: RouteContextResolver): RouteResolver {
+export function createRouteResolver(reader: WorkspaceReader, scripts: ScriptDefinitionResolver, contexts?: RouteContextResolver, syntax = createRouteDocumentResolver()): RouteResolver {
   /** 请求内合并配置探测和源码读取，重复路由不重复建立目录。 */
   const models = new WeakMap<LanguageRequest, Promise<{ catalog?: Catalog; read: (uri: string) => Promise<WorkspaceText | undefined>; valid: () => boolean; exhausted: () => boolean; dependencies: Map<string, string>; files?: ReturnType<NonNullable<WorkspaceReader['fileResolver']>> }>>();
   /** 配置与负向探测均参与修订验证，未保存配置由请求快照覆盖。 */
@@ -75,7 +76,7 @@ export function createRouteResolver(reader: WorkspaceReader, scripts: ScriptDefi
     async function inspect(uri: string): Promise<boolean> {
       const document = await read(uri);
       if (!document) return false;
-      const manifest = /\.jsonc?$/i.test(uri) ? (await import('./routes-document')).jsonRoutes(uri, document.text) : await scripts.routeManifest?.(request, uri);
+      const manifest = /\.jsonc?$/i.test(uri) ? await syntax.manifest(uri, document.text) : await scripts.routeManifest?.(request, uri);
       if (!manifest) { reader.navigation?.record({ code: 'config', message: '应用入口未解析出页面目录，请检查配置语法、静态声明及框架适配。', uri }); return true; }
       reader.navigation?.record({ code: 'config', message: `应用配置包含 ${manifest.pages.length} 个静态页面；${manifest.complete ? '页面目录已完整解析' : '仍有动态或未确定的页面声明'}。`, uri });
       for (const dependency of manifest.dependencies) dependencies.set(dependency.uri, dependency.revision);
@@ -105,7 +106,7 @@ export function createRouteResolver(reader: WorkspaceReader, scripts: ScriptDefi
         if (uri === application || !(await files.candidates(uri, request.document.uri, 'file')).includes(application)) continue;
         const document = await read(uri);
         if (!document) continue;
-        const manifest = (await import('./routes-document')).jsonRoutes(uri, document.text);
+        const manifest = await syntax.manifest(uri, document.text);
         if (!manifest.complete) continue;
         let added = 0;
         for (const page of manifest.pages) if (!pages.has(page.path)) {
@@ -305,10 +306,10 @@ export function createRouteResolver(reader: WorkspaceReader, scripts: ScriptDefi
 }
 
 /** 通用脚本提供器只在真实路由 URL 上补充编辑器能力。 */
-export function createRoutePlugin(scripts: ScriptDefinitionResolver, routes: RouteResolver): LanguagePlugin {
+export function createRoutePlugin(scripts: ScriptDefinitionResolver, routes: RouteResolver, syntax = createRouteDocumentResolver()): LanguagePlugin {
   /** 配置页面字符串与脚本平台调用使用相同的路由结果。 */
   async function accesses(request: LanguageRequest, all = false) {
-    return ['json', 'jsonc'].includes(request.document.languageId) ? (await import('./routes-document')).jsonRouteAccesses(request) : await scripts.routeQueries?.(request, all) ?? [];
+    return ['json', 'jsonc'].includes(request.document.languageId) ? await syntax.accesses(request) : await scripts.routeQueries?.(request, all) ?? [];
   }
   /** 光标查询只选取包含当前位置的 URL，不替代常量的普通 TypeScript 语义。 */
   async function result(request: LanguageRequest): Promise<RouteResult | undefined> {

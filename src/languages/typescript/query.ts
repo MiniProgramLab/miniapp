@@ -69,6 +69,7 @@ export async function queryContext(project: ScriptProject, request: LanguageRequ
   const steps = expression.event ? [] : scopes ?? [{ uri: request.document.uri, bindings: expression.bindings, version: request.document.version }];
   const program = await project.create();
   if (!program || project.cancelled) return undefined;
+  if (request.checkpoint && !await request.checkpoint(request.cancellation)) return undefined;
   const values = new Values(program.program.getTypeChecker(), () => project.cancelled, (name, from) => project.module(name, from), project.adapters);
   const cached = pageContexts.get(program.program);
   const reusable = cached?.entry === program.entry ? cached : undefined;

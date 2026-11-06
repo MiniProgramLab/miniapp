@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1504 1596" role="img" aria-label="miniapp 插件分层架构 — miniprogramlab.miniapp · 箭头表示源码依赖方向 · 实线：运行时 · 虚线：仅类型 (architecture diagram)">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1648 1596" role="img" aria-label="miniapp 插件分层架构 — miniprogramlab.miniapp · 箭头表示源码依赖方向 · 实线：运行时 · 虚线：仅类型 (architecture diagram)">
 <style><![CDATA[svg { font-family: Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif; }
 .c-grid       { stroke: var(--grid); fill: none; }
 .c-mask       { fill: var(--mask); stroke: none; }
@@ -180,128 +180,194 @@ svg[data-theme="dark"] {
         <text x="40" y="32" class="t-primary" font-size="25" font-weight="600">miniapp 插件分层架构</text>
         <text x="40" y="56" class="t-muted" font-size="12">miniprogramlab.miniapp · 箭头表示源码依赖方向 · 实线：运行时 · 虚线：仅类型</text>
         <!-- 分层边界置于模块下方 -->
-        <rect x="148" y="86" width="1208" height="150" rx="0" class="c-region" stroke-width="1"/>
-        <text x="156" y="104" class="t-cloud" font-size="13" font-weight="600">扩展装配层</text>
+        <rect x="220" y="86" width="1208" height="150" rx="0" class="c-region" stroke-width="1"/>
+        <text x="228" y="104" class="t-cloud" font-size="13" font-weight="600">扩展装配层</text>
 
-        <rect x="148" y="296" width="1208" height="150" rx="0" class="c-region" stroke-width="1"/>
-        <text x="156" y="314" class="t-cloud" font-size="13" font-weight="600">编辑器适配层</text>
+        <rect x="220" y="296" width="1208.0000000000002" height="150" rx="0" class="c-region" stroke-width="1"/>
+        <text x="228" y="314" class="t-cloud" font-size="13" font-weight="600">编辑器适配层</text>
 
-        <rect x="148" y="506" width="1208" height="150" rx="0" class="c-region" stroke-width="1"/>
-        <text x="156" y="524" class="t-cloud" font-size="13" font-weight="600">公共契约与插件底座</text>
+        <rect x="220" y="506" width="1208" height="150" rx="0" class="c-region" stroke-width="1"/>
+        <text x="228" y="524" class="t-cloud" font-size="13" font-weight="600">公共契约与插件底座</text>
 
-        <rect x="148" y="716" width="1208" height="150" rx="0" class="c-region" stroke-width="1"/>
-        <text x="156" y="734" class="t-cloud" font-size="13" font-weight="600">语言能力层</text>
+        <rect x="220" y="716" width="1208.0000000000002" height="150" rx="0" class="c-region" stroke-width="1"/>
+        <text x="228" y="734" class="t-cloud" font-size="13" font-weight="600">语言能力层</text>
 
-        <rect x="148" y="926" width="1208" height="150" rx="0" class="c-region" stroke-width="1"/>
-        <text x="156" y="944" class="t-cloud" font-size="13" font-weight="600">共享解析与工程服务</text>
+        <rect x="220" y="926" width="1208" height="150" rx="0" class="c-region" stroke-width="1"/>
+        <text x="228" y="944" class="t-cloud" font-size="13" font-weight="600">共享解析与工程服务</text>
 
-        <rect x="148" y="1136" width="1208" height="360" rx="0" class="c-region" stroke-width="1"/>
-        <text x="156" y="1154" class="t-cloud" font-size="13" font-weight="600">编辑器宿主与基础依赖</text>
+        <rect x="220" y="1136" width="1208.0000000000002" height="360" rx="0" class="c-region" stroke-width="1"/>
+        <text x="228" y="1154" class="t-cloud" font-size="13" font-weight="600">编辑器宿主与基础依赖</text>
 
         <!-- Connection paths (before components for correct z-order) -->
-        <path d="M 456 426 L 456 461 L 1474 461 L 1474 1131 L 1146.6666666666667 1131 L 1146.6666666666667 1166" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path d="M 1048 426 L 1048 481 L 456 481 L 456 536" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path d="M 1048 426 L 1048 481 L 1048 481 L 1048 536" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 1048 426 L 1048 476 L 1462 476 L 1462 1116 L 357.33333333333337 1116 L 357.33333333333337 1166" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 1048 426 L 1048 481 L 1458 481 L 1458 1321 L 752 1321 L 752 1376" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 1048 426 L 1048 486 L 1454 486 L 1454 896 L 752 896 L 752 956" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path d="M 770 586 L 734 586" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path d="M 752 216 L 752 271 L 1048 271 L 1048 326" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 752 216 L 752 251 L 1442 251 L 1442 501 L 456 501 L 456 536" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path d="M 752 216 L 752 256 L 66 256 L 66 496 L 1048 496 L 1048 536" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 752 216 L 752 261 L 70 261 L 70 701 L 357.33333333333337 701 L 357.33333333333337 746" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 752 216 L 752 266 L 74 266 L 74 696 L 752.0000000000001 696 L 752.0000000000001 746" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 752 216 L 752 271 L 78 271 L 78 691 L 1146.6666666666667 691 L 1146.6666666666667 746" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 752 216 L 752 276 L 1422 276 L 1422 1316 L 752 1316 L 752 1376" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 752 216 L 752 281 L 86 281 L 86 891 L 752 891 L 752 956" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 357.33333333333337 846 L 357.33333333333337 916 L 1414 916 L 1414 706 L 456 706 L 456 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path d="M 752.0000000000001 846 L 752.0000000000001 881 L 1410 881 L 1410 671 L 456 671 L 456 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path d="M 752.0000000000001 846 L 752.0000000000001 886 L 1406 886 L 1406 1126 L 1146.6666666666667 1126 L 1146.6666666666667 1166" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 1146.6666666666667 846 L 1146.6666666666667 891 L 1402 891 L 1402 681 L 456 681 L 456 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path d="M 752 1056 L 752 1106 L 1398 1106 L 1398 686 L 456 686 L 456 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path d="M 752 1056 L 752 1111 L 752.0000000000001 1111 L 752.0000000000001 1166" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path d="M 752 1056 L 752 1111 L 1146.6666666666667 1111 L 1146.6666666666667 1166" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 429.33333333333337 426 L 429.33333333333337 461 L 1618 461 L 1618 1341 L 626.6666666666666 1341 L 626.6666666666666 1376" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 824.0000000000001 426 L 824.0000000000001 481 L 528 481 L 528 536" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 824.0000000000001 426 L 824.0000000000001 481 L 1120 481 L 1120 536" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 824.0000000000001 426 L 824.0000000000001 476 L 1606 476 L 1606 1116 L 429.33333333333337 1116 L 429.33333333333337 1166" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 824.0000000000001 426 L 824.0000000000001 481 L 1602 481 L 1602 1321 L 1021.3333333333334 1321 L 1021.3333333333334 1376" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 824.0000000000001 426 L 824.0000000000001 486 L 1598 486 L 1598 896 L 1268 896 L 1268 956" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 1218.6666666666667 426 L 1218.6666666666667 481 L 528 481 L 528 536" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 1218.6666666666667 426 L 1218.6666666666667 496 L 1590 496 L 1590 886 L 380 886 L 380 956" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 1218.6666666666667 426 L 1218.6666666666667 461 L 1586 461 L 1586 1131 L 1218.6666666666667 1131 L 1218.6666666666667 1166" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 380 1056 L 380 1096 L 1582 1096 L 1582 676 L 528 676 L 528 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 676 1056 L 676 1101 L 70 1101 L 70 471 L 1218.6666666666667 471 L 1218.6666666666667 426" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 676 1056 L 676 1106 L 1574 1106 L 1574 686 L 528 686 L 528 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 676 1056 L 676 1111 L 78 1111 L 78 901 L 824.0000000000001 901 L 824.0000000000001 846" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 676 1056 L 676 1116 L 82 1116 L 82 1116 L 1268 1116 L 1268 1056" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 972 1056 L 972 1121 L 86 1121 L 86 491 L 824.0000000000001 491 L 824.0000000000001 426" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 972 1056 L 972 1126 L 90 1126 L 90 496 L 1218.6666666666667 496 L 1218.6666666666667 426" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 972 1056 L 972 1091 L 1554 1091 L 1554 671 L 528 671 L 528 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 972 1056 L 972 1096 L 1550 1096 L 1550 1096 L 380 1096 L 380 1056" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 972 1056 L 972 1101 L 102 1101 L 102 681 L 1120 681 L 1120 636" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 972 1056 L 972 1106 L 106 1106 L 106 896 L 824.0000000000001 896 L 824.0000000000001 846" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 972 1056 L 972 1111 L 429.33333333333337 1111 L 429.33333333333337 1166" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 972 1056 L 972 1111 L 1218.6666666666667 1111 L 1218.6666666666667 1166" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 1102 1006 L 1138 1006" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 842 586 L 806 586" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 824 216 L 824 271 L 824.0000000000001 271 L 824.0000000000001 326" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 824 216 L 824 256 L 1518 256 L 1518 496 L 528 496 L 528 536" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 824 216 L 824 261 L 134 261 L 134 911 L 676 911 L 676 956" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 824 216 L 824 266 L 138 266 L 138 486 L 1120 486 L 1120 536" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 824 216 L 824 271 L 142 271 L 142 691 L 429.33333333333337 691 L 429.33333333333337 746" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 824 216 L 824 276 L 146 276 L 146 686 L 824.0000000000001 686 L 824.0000000000001 746" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 824 216 L 824 281 L 150 281 L 150 681 L 1218.6666666666667 681 L 1218.6666666666667 746" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 824 216 L 824 286 L 1494 286 L 1494 1306 L 1021.3333333333334 1306 L 1021.3333333333334 1376" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 824 216 L 824 251 L 158 251 L 158 921 L 1268 921 L 1268 956" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 429.33333333333337 846 L 429.33333333333337 886 L 1486 886 L 1486 676 L 528 676 L 528 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 824.0000000000001 846 L 824.0000000000001 891 L 1482 891 L 1482 681 L 528 681 L 528 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 824.0000000000001 846 L 824.0000000000001 896 L 1478 896 L 1478 1326 L 626.6666666666666 1326 L 626.6666666666666 1376" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 1218.6666666666667 846 L 1218.6666666666667 901 L 1474 901 L 1474 691 L 528 691 L 528 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 1268 1056 L 1268 1116 L 1470 1116 L 1470 696 L 528 696 L 528 636" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path d="M 1268 1056 L 1268 1111 L 824.0000000000001 1111 L 824.0000000000001 1166" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path d="M 1268 1056 L 1268 1126 L 1462 1126 L 1462 1306 L 626.6666666666666 1306 L 626.6666666666666 1376" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 
         <!-- Components -->
-        <rect x="178" y="116" width="1148" height="100" rx="0" class="c-mask"/>
-        <rect x="178" y="116" width="1148" height="100" rx="0" class="c-cloud" stroke-width="1.5"/>
-        <text x="752" y="164" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">组合入口</text>
-        <text x="752" y="180" class="t-muted" font-size="13" text-anchor="middle">14 项编辑能力</text>
-        <text x="752" y="208" class="t-cloud" font-size="11" text-anchor="middle">src/extension.ts · 注入依赖 · 注册插件 · 暴露 API</text>
+        <rect x="250" y="116" width="1148" height="100" rx="0" class="c-mask"/>
+        <rect x="250" y="116" width="1148" height="100" rx="0" class="c-cloud" stroke-width="1.5"/>
+        <text x="824" y="164" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">组合入口</text>
+        <text x="824" y="180" class="t-muted" font-size="13" text-anchor="middle">14 项编辑能力</text>
+        <text x="824" y="208" class="t-cloud" font-size="11" text-anchor="middle">src/extension.ts · 注入依赖 · 注册插件 · 暴露 API</text>
 
-        <rect x="178" y="326" width="556" height="100" rx="0" class="c-mask"/>
-        <rect x="178" y="326" width="556" height="100" rx="0" class="c-frontend" stroke-width="1.5"/>
-        <text x="456" y="374" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">adapters/typescript</text>
-        <text x="456" y="390" class="t-muted" font-size="13" text-anchor="middle">0 个公开导出</text>
-        <text x="456" y="418" class="t-frontend" font-size="11" text-anchor="middle">src/adapters/typescript</text>
+        <rect x="250" y="326" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
+        <rect x="250" y="326" width="358.6666666666667" height="100" rx="0" class="c-frontend" stroke-width="1.5"/>
+        <text x="429.33333333333337" y="374" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">adapters/typescript</text>
+        <text x="429.33333333333337" y="390" class="t-muted" font-size="13" text-anchor="middle">0 个公开导出</text>
+        <text x="429.33333333333337" y="418" class="t-frontend" font-size="11" text-anchor="middle">src/adapters/typescript</text>
 
-        <rect x="770" y="326" width="556" height="100" rx="0" class="c-mask"/>
-        <rect x="770" y="326" width="556" height="100" rx="0" class="c-frontend" stroke-width="1.5"/>
-        <text x="1048" y="374" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">VS Code / Cursor 适配器</text>
-        <text x="1048" y="390" class="t-muted" font-size="13" text-anchor="middle">10 个公开导出</text>
-        <text x="1048" y="418" class="t-frontend" font-size="11" text-anchor="middle">src/adapters/vscode</text>
+        <rect x="644.6666666666667" y="326" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
+        <rect x="644.6666666666667" y="326" width="358.6666666666667" height="100" rx="0" class="c-frontend" stroke-width="1.5"/>
+        <text x="824.0000000000001" y="374" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">VS Code / Cursor 适配器</text>
+        <text x="824.0000000000001" y="390" class="t-muted" font-size="13" text-anchor="middle">11 个公开导出</text>
+        <text x="824.0000000000001" y="418" class="t-frontend" font-size="11" text-anchor="middle">src/adapters/vscode</text>
 
-        <rect x="178" y="536" width="556" height="100" rx="0" class="c-mask"/>
-        <rect x="178" y="536" width="556" height="100" rx="0" class="c-cloud" stroke-width="1.5"/>
-        <text x="456" y="584" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">公共 API 与能力契约</text>
-        <text x="456" y="600" class="t-muted" font-size="13" text-anchor="middle">72 个公开导出</text>
-        <text x="456" y="628" class="t-cloud" font-size="11" text-anchor="middle">src/api</text>
+        <rect x="1039.3333333333335" y="326" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
+        <rect x="1039.3333333333335" y="326" width="358.6666666666667" height="100" rx="0" class="c-frontend" stroke-width="1.5"/>
+        <text x="1218.6666666666667" y="374" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">adapters/worker</text>
+        <text x="1218.6666666666667" y="390" class="t-muted" font-size="13" text-anchor="middle">6 个公开导出</text>
+        <text x="1218.6666666666667" y="418" class="t-frontend" font-size="11" text-anchor="middle">src/adapters/worker</text>
 
-        <rect x="770" y="536" width="556" height="100" rx="0" class="c-mask"/>
-        <rect x="770" y="536" width="556" height="100" rx="0" class="c-cloud" stroke-width="1.5"/>
-        <text x="1048" y="584" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">插件底座</text>
-        <text x="1048" y="600" class="t-muted" font-size="13" text-anchor="middle">7 个公开导出</text>
-        <text x="1048" y="628" class="t-cloud" font-size="11" text-anchor="middle">src/core</text>
+        <rect x="250" y="536" width="556" height="100" rx="0" class="c-mask"/>
+        <rect x="250" y="536" width="556" height="100" rx="0" class="c-cloud" stroke-width="1.5"/>
+        <text x="528" y="584" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">公共 API 与能力契约</text>
+        <text x="528" y="600" class="t-muted" font-size="13" text-anchor="middle">75 个公开导出</text>
+        <text x="528" y="628" class="t-cloud" font-size="11" text-anchor="middle">src/api</text>
 
-        <rect x="178" y="746" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
-        <rect x="178" y="746" width="358.6666666666667" height="100" rx="0" class="c-backend" stroke-width="1.5"/>
-        <text x="357.33333333333337" y="794" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">CSS / WXSS / SCSS / Less</text>
-        <text x="357.33333333333337" y="810" class="t-muted" font-size="13" text-anchor="middle">定义跳转</text>
-        <text x="357.33333333333337" y="838" class="t-backend" font-size="11" text-anchor="middle">src/languages/css</text>
+        <rect x="842" y="536" width="556" height="100" rx="0" class="c-mask"/>
+        <rect x="842" y="536" width="556" height="100" rx="0" class="c-cloud" stroke-width="1.5"/>
+        <text x="1120" y="584" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">插件底座</text>
+        <text x="1120" y="600" class="t-muted" font-size="13" text-anchor="middle">7 个公开导出</text>
+        <text x="1120" y="628" class="t-cloud" font-size="11" text-anchor="middle">src/core</text>
 
-        <rect x="572.6666666666667" y="746" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
-        <rect x="572.6666666666667" y="746" width="358.6666666666667" height="100" rx="0" class="c-backend" stroke-width="1.5"/>
-        <text x="752.0000000000001" y="794" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">TypeScript / JavaScript</text>
-        <text x="752.0000000000001" y="810" class="t-muted" font-size="13" text-anchor="middle">8 项编辑能力</text>
-        <text x="752.0000000000001" y="838" class="t-backend" font-size="11" text-anchor="middle">src/languages/typescript</text>
+        <rect x="250" y="746" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
+        <rect x="250" y="746" width="358.6666666666667" height="100" rx="0" class="c-backend" stroke-width="1.5"/>
+        <text x="429.33333333333337" y="794" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">CSS / WXSS / SCSS / Less</text>
+        <text x="429.33333333333337" y="810" class="t-muted" font-size="13" text-anchor="middle">定义跳转</text>
+        <text x="429.33333333333337" y="838" class="t-backend" font-size="11" text-anchor="middle">src/languages/css</text>
 
-        <rect x="967.3333333333334" y="746" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
-        <rect x="967.3333333333334" y="746" width="358.6666666666667" height="100" rx="0" class="c-backend" stroke-width="1.5"/>
-        <text x="1146.6666666666667" y="794" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">WXML</text>
-        <text x="1146.6666666666667" y="810" class="t-muted" font-size="13" text-anchor="middle">14 项编辑能力</text>
-        <text x="1146.6666666666667" y="838" class="t-backend" font-size="11" text-anchor="middle">src/languages/wxml</text>
+        <rect x="644.6666666666667" y="746" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
+        <rect x="644.6666666666667" y="746" width="358.6666666666667" height="100" rx="0" class="c-backend" stroke-width="1.5"/>
+        <text x="824.0000000000001" y="794" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">TypeScript / JavaScript</text>
+        <text x="824.0000000000001" y="810" class="t-muted" font-size="13" text-anchor="middle">8 项编辑能力</text>
+        <text x="824.0000000000001" y="838" class="t-backend" font-size="11" text-anchor="middle">src/languages/typescript</text>
 
-        <rect x="178" y="956" width="1148" height="100" rx="0" class="c-mask"/>
-        <rect x="178" y="956" width="1148" height="100" rx="0" class="c-backend" stroke-width="1.5"/>
-        <text x="752" y="1004" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">智能文件解析</text>
-        <text x="752" y="1020" class="t-muted" font-size="13" text-anchor="middle">14 项编辑能力</text>
-        <text x="752" y="1048" class="t-backend" font-size="11" text-anchor="middle">src/resolution</text>
+        <rect x="1039.3333333333335" y="746" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
+        <rect x="1039.3333333333335" y="746" width="358.6666666666667" height="100" rx="0" class="c-backend" stroke-width="1.5"/>
+        <text x="1218.6666666666667" y="794" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">WXML</text>
+        <text x="1218.6666666666667" y="810" class="t-muted" font-size="13" text-anchor="middle">14 项编辑能力</text>
+        <text x="1218.6666666666667" y="838" class="t-backend" font-size="11" text-anchor="middle">src/languages/wxml</text>
 
-        <rect x="178" y="1166" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
-        <rect x="178" y="1166" width="358.6666666666667" height="100" rx="0" class="c-external" stroke-width="1.5"/>
-        <text x="357.33333333333337" y="1214" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">node:async_hooks</text>
-        <text x="357.33333333333337" y="1230" class="t-muted" font-size="13" text-anchor="middle">外部运行时 / 类型依赖</text>
-        <text x="357.33333333333337" y="1258" class="t-external" font-size="11" text-anchor="middle">node:async_hooks</text>
+        <rect x="250" y="956" width="260" height="100" rx="0" class="c-mask"/>
+        <rect x="250" y="956" width="260" height="100" rx="0" class="c-backend" stroke-width="1.5"/>
+        <text x="380" y="1004" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">compute-protocol</text>
+        <text x="380" y="1020" class="t-muted" font-size="13" text-anchor="middle">8 个公开导出</text>
+        <text x="380" y="1048" class="t-backend" font-size="11" text-anchor="middle">src/compute-protocol</text>
 
-        <rect x="572.6666666666667" y="1166" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
-        <rect x="572.6666666666667" y="1166" width="358.6666666666667" height="100" rx="0" class="c-external" stroke-width="1.5"/>
-        <text x="752.0000000000001" y="1214" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">node:path</text>
-        <text x="752.0000000000001" y="1230" class="t-muted" font-size="13" text-anchor="middle">外部运行时 / 类型依赖</text>
-        <text x="752.0000000000001" y="1258" class="t-external" font-size="11" text-anchor="middle">node:path</text>
+        <rect x="546" y="956" width="260" height="100" rx="0" class="c-mask"/>
+        <rect x="546" y="956" width="260" height="100" rx="0" class="c-backend" stroke-width="1.5"/>
+        <text x="676" y="1004" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">compute-services</text>
+        <text x="676" y="1020" class="t-muted" font-size="13" text-anchor="middle">14 项编辑能力</text>
+        <text x="676" y="1048" class="t-backend" font-size="11" text-anchor="middle">src/compute-services</text>
 
-        <rect x="967.3333333333334" y="1166" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
-        <rect x="967.3333333333334" y="1166" width="358.6666666666667" height="100" rx="0" class="c-external" stroke-width="1.5"/>
-        <text x="1146.6666666666667" y="1214" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">typescript</text>
-        <text x="1146.6666666666667" y="1230" class="t-muted" font-size="13" text-anchor="middle">外部运行时 / 类型依赖</text>
-        <text x="1146.6666666666667" y="1258" class="t-external" font-size="11" text-anchor="middle">typescript</text>
+        <rect x="842" y="956" width="260" height="100" rx="0" class="c-mask"/>
+        <rect x="842" y="956" width="260" height="100" rx="0" class="c-backend" stroke-width="1.5"/>
+        <text x="972" y="1004" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">compute-worker</text>
+        <text x="972" y="1020" class="t-muted" font-size="13" text-anchor="middle">0 个公开导出</text>
+        <text x="972" y="1048" class="t-backend" font-size="11" text-anchor="middle">src/compute-worker</text>
 
-        <rect x="572.6666666666666" y="1376" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
-        <rect x="572.6666666666666" y="1376" width="358.6666666666667" height="100" rx="0" class="c-external" stroke-width="1.5"/>
-        <text x="752" y="1424" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">vscode</text>
-        <text x="752" y="1440" class="t-muted" font-size="13" text-anchor="middle">外部运行时 / 类型依赖</text>
-        <text x="752" y="1468" class="t-external" font-size="11" text-anchor="middle">vscode</text>
+        <rect x="1138" y="956" width="260" height="100" rx="0" class="c-mask"/>
+        <rect x="1138" y="956" width="260" height="100" rx="0" class="c-backend" stroke-width="1.5"/>
+        <text x="1268" y="1004" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">智能文件解析</text>
+        <text x="1268" y="1020" class="t-muted" font-size="13" text-anchor="middle">14 项编辑能力</text>
+        <text x="1268" y="1048" class="t-backend" font-size="11" text-anchor="middle">src/resolution</text>
+
+        <rect x="250" y="1166" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
+        <rect x="250" y="1166" width="358.6666666666667" height="100" rx="0" class="c-external" stroke-width="1.5"/>
+        <text x="429.33333333333337" y="1214" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">node:async_hooks</text>
+        <text x="429.33333333333337" y="1230" class="t-muted" font-size="13" text-anchor="middle">外部运行时 / 类型依赖</text>
+        <text x="429.33333333333337" y="1258" class="t-external" font-size="11" text-anchor="middle">node:async_hooks</text>
+
+        <rect x="644.6666666666667" y="1166" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
+        <rect x="644.6666666666667" y="1166" width="358.6666666666667" height="100" rx="0" class="c-external" stroke-width="1.5"/>
+        <text x="824.0000000000001" y="1214" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">node:path</text>
+        <text x="824.0000000000001" y="1230" class="t-muted" font-size="13" text-anchor="middle">外部运行时 / 类型依赖</text>
+        <text x="824.0000000000001" y="1258" class="t-external" font-size="11" text-anchor="middle">node:path</text>
+
+        <rect x="1039.3333333333335" y="1166" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
+        <rect x="1039.3333333333335" y="1166" width="358.6666666666667" height="100" rx="0" class="c-external" stroke-width="1.5"/>
+        <text x="1218.6666666666667" y="1214" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">node:worker_threads</text>
+        <text x="1218.6666666666667" y="1230" class="t-muted" font-size="13" text-anchor="middle">外部运行时 / 类型依赖</text>
+        <text x="1218.6666666666667" y="1258" class="t-external" font-size="11" text-anchor="middle">node:worker_threads</text>
+
+        <rect x="447.3333333333333" y="1376" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
+        <rect x="447.3333333333333" y="1376" width="358.6666666666667" height="100" rx="0" class="c-external" stroke-width="1.5"/>
+        <text x="626.6666666666666" y="1424" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">typescript</text>
+        <text x="626.6666666666666" y="1440" class="t-muted" font-size="13" text-anchor="middle">外部运行时 / 类型依赖</text>
+        <text x="626.6666666666666" y="1468" class="t-external" font-size="11" text-anchor="middle">typescript</text>
+
+        <rect x="842" y="1376" width="358.6666666666667" height="100" rx="0" class="c-mask"/>
+        <rect x="842" y="1376" width="358.6666666666667" height="100" rx="0" class="c-external" stroke-width="1.5"/>
+        <text x="1021.3333333333334" y="1424" class="t-primary" font-size="17" font-weight="600" text-anchor="middle">vscode</text>
+        <text x="1021.3333333333334" y="1440" class="t-muted" font-size="13" text-anchor="middle">外部运行时 / 类型依赖</text>
+        <text x="1021.3333333333334" y="1468" class="t-external" font-size="11" text-anchor="middle">vscode</text>
 
         <!-- Connection labels -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

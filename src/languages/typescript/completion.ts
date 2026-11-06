@@ -32,13 +32,15 @@ export async function completeTemplate(project: ScriptProject, request: Language
   if (context) {
     const { values, roots } = context;
     if (ts.isPropertyAccessExpression(site.node)) {
-      for (const parent of evaluate(site.node.expression, roots, values)) for (const [name, items] of values.fields(parent)) {
+      // 候选列表只枚举名称，选中详情时仅展开该字段；事件仍核对真实函数类型。
+      for (const parent of evaluate(site.node.expression, roots, values)) for (const [name, items] of values.fields(parent, new Set(), onlyName === undefined ? undefined : new Set([onlyName]), !request.deferCompletionDetails || !!expression.event)) {
         members.set(name, [...(members.get(name) ?? []), ...items]);
       }
     } else if (ts.isIdentifier(site.node)) for (const [name, items] of roots) members.set(name, items);
   }
   const result: Completion[] = [];
   for (const [name, items] of members) {
+    if (request.checkpoint && !await request.checkpoint(request.cancellation)) return [];
     if (onlyName !== undefined && name !== onlyName || !name.startsWith(site.prefix) || !/^[$\p{ID_Start}_][$\p{ID_Continue}]*$/u.test(name)) continue;
     const values = context!.values;
     if (request.deferCompletionDetails && !expression.event) {

@@ -63,6 +63,22 @@ function local(property: ts.ObjectLiteralElementLike): boolean {
     || [ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword, ts.SyntaxKind.NullKeyword].includes(node.kind);
 }
 
+/** 静态成员链保留独立路径段，动态下标和函数返回值不猜测。 */
+function accessPath(node: ts.Node): string[] | undefined {
+  if (ts.isIdentifier(node)) return [node.text];
+  if (ts.isParenthesizedExpression(node)) return accessPath(node.expression);
+  if (ts.isPropertyAccessExpression(node)) {
+    const parent = accessPath(node.expression); return parent && [...parent, node.name.text];
+  }
+  if (ts.isElementAccessExpression(node) && (ts.isStringLiteralLike(node.argumentExpression) || ts.isNumericLiteral(node.argumentExpression))) {
+    const parent = accessPath(node.expression); return parent && [...parent, node.argumentExpression.text];
+  }
+  return undefined;
+}
+
+/** 根名称沿用原缓存键，嵌套名称按完整路径段编码。 */
+function pathKey(path: readonly string[]): string { return path.length === 1 ? path[0]! : JSON.stringify(path); }
+
 /** 按需值只保存语法节点和原始声明，不推测类型或执行项目代码。 */
 interface DirectValue {
   readonly node: ts.Node;
@@ -277,6 +293,8 @@ class DirectReferences {
   /** 候选必须覆盖全部静态成员，任何不确定分支都保留完整语义处理。 */
   async names(node: ts.Node, seen = new Set<ts.Node>()): Promise<ReadonlySet<string> | undefined> {
     if (seen.has(node) || seen.size > 40) return undefined;
+    const value = await this.value(node);
+    if (!value || value.constrained) return undefined;
     const config = await this.object(node);
     if (!config) return undefined;
     const result = new Set<string>(), visited = new Set(seen).add(node);
@@ -331,6 +349,38 @@ class DirectReferences {
       if (key.text === name) return property;
     }
     return null;
+  }
+
+  /** 普通对象成员沿必要分支查找，显式类型和组件参数保留语义回退。 */
+  async select(config: ts.Node, path: readonly string[]): Promise<DirectValue | undefined> {
+    let value = await this.member(config, path[0]!);
+    for (const name of path.slice(1)) {
+      if (!value || value.constrained || value.property) return undefined;
+      const property = await this.property(value.node, name);
+      if (!property) return undefined;
+      value = local(property) ? { node: property, declaration: property.name! } : await this.value(property);
+    }
+    return value ?? undefined;
+  }
+
+  /** 对象字段表完整时才提供轻量补全。 */
+  async keys(value: DirectValue): Promise<readonly string[] | undefined> {
+    if (value.property) return undefined;
+    if (value.constrained) {
+      const keys = await this.recordKeys(value);
+      return keys ? [...keys] : undefined;
+    }
+    const fields = await this.object(value.node);
+    return fields ? [...fields.keys()] : undefined;
+  }
+
+  /** 静态可调用性只用于筛选明确的事件处理函数。 */
+  async callable(value: DirectValue | undefined): Promise<boolean | undefined> {
+    if (!value || value.constrained || value.property) return undefined;
+    const resolved = await this.value(value.node);
+    if (!resolved || resolved.constrained) return undefined;
+    if (ts.isFunctionLike(resolved.node)) return true;
+    return ts.isObjectLiteralExpression(resolved.node) || ts.isArrayLiteralExpression(resolved.node) || ts.isStringLiteralLike(resolved.node) || ts.isNumericLiteral(resolved.node) || [ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword, ts.SyntaxKind.NullKeyword].includes(resolved.node.kind) ? false : undefined;
   }
 
   /** 先检查覆盖项，再逆序查找继承项，只读取决定目标的 Behavior 分支。 */
@@ -405,7 +455,7 @@ async function unchanged(reader: WorkspaceReader, request: LanguageRequest, cach
 }
 
 /** 语法不明确时只放弃快速路径，完整类型图仍负责最终导航结论。 */
-async function locate(request: LanguageRequest, name: string, graph: DirectReferences): Promise<(Omit<Definition, 'originRange' | 'version'> & { literalType?: string; description?: string }) | undefined> {
+async function locate(request: LanguageRequest, path: readonly string[], graph: DirectReferences): Promise<(Omit<Definition, 'originRange' | 'version'> & { literalType?: string; description?: string }) | undefined> {
   const base = request.document.uri.replace(/\.wxml$/i, '');
   for (const suffix of ['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs']) {
     const uri = base + suffix;
@@ -414,7 +464,7 @@ async function locate(request: LanguageRequest, name: string, graph: DirectRefer
     if (!source) continue;
     const calls = directRegistrations(source);
     if (calls.length !== 1) return undefined;
-    const resolved = await graph.member(calls[0]!.arguments[0]!, name);
+    const resolved = await graph.select(calls[0]!.arguments[0]!, path);
     if (request.cancellation.isCancellationRequested) return undefined;
     const target = resolved?.declaration;
     if (!target) return undefined;
@@ -435,8 +485,11 @@ async function locate(request: LanguageRequest, name: string, graph: DirectRefer
 
 /** 补全字段索引仅跟随注册链，类型详情由选中项再查询。 */
 export async function directTemplateNames(reader: WorkspaceReader, request: LanguageRequest, expression: TemplateExpression, options: ScriptOptions): Promise<readonly string[] | undefined> {
-  if (!/\.wxml$/i.test(request.document.uri) || expression.contexts || expression.objectLiteral || expression.event || expression.bindings.length || options.adapters?.length || request.cancellation.isCancellationRequested) return undefined;
-  const key = JSON.stringify(['completion', reader.root(request.document.uri), request.document.uri, options]);
+  if (!/\.wxml$/i.test(request.document.uri) || expression.contexts || expression.objectLiteral || !expression.event && expression.bindings.length || options.adapters?.length || request.cancellation.isCancellationRequested) return undefined;
+  const site = completionSite(request, expression);
+  const path = site && ts.isPropertyAccessExpression(site.node) ? accessPath(site.node.expression) : site && ts.isIdentifier(site.node) ? [] : undefined;
+  if (!path) return undefined;
+  const key = JSON.stringify(['completion', reader.root(request.document.uri), request.document.uri, options, path, expression.event ? site!.prefix : undefined]);
   const cached = reader.revision && references.get(reader.revision)?.find((item) => item.key === key);
   if (cached && await unchanged(reader, request, cached)) return cached.names;
   const graph = new DirectReferences(reader, request, options);
@@ -446,9 +499,29 @@ export async function directTemplateNames(reader: WorkspaceReader, request: Lang
     if (request.cancellation.isCancellationRequested) return undefined;
     if (!source) continue;
     const calls = directRegistrations(source);
-    if (calls.length === 1) names = [...await graph.names(calls[0]!.arguments[0]!) ?? []];
-    // 空集合可能来自不确定语法，交给完整语义确认。
-    if (!names?.length) names = undefined;
+    if (calls.length === 1) {
+      const config = calls[0]!.arguments[0]!;
+      if (path.length) {
+        const parent = await graph.select(config, path);
+        if (parent) names = await graph.keys(parent);
+      } else {
+        const roots = await graph.names(config);
+        names = roots ? [...roots] : undefined;
+      }
+      if (names && expression.event) {
+        const candidates = names.filter((name) => name.startsWith(site!.prefix));
+        if (candidates.length > 32) names = undefined;
+        else {
+          const handlers: string[] = [];
+          for (const name of candidates) {
+            const callable = await graph.callable(await graph.select(config, [...path, name]));
+            if (callable === undefined) { names = undefined; break; }
+            if (callable) handlers.push(name);
+          }
+          if (names) names = handlers;
+        }
+      }
+    }
     break;
   }
   const snapshot = graph.cache();
@@ -466,8 +539,9 @@ export async function directTemplateNames(reader: WorkspaceReader, request: Lang
 export async function directTemplateDefinition(reader: WorkspaceReader, request: LanguageRequest, expression: TemplateExpression, options: ScriptOptions = {}, project?: ScriptProject): Promise<readonly Definition[] | undefined> {
   if (!/\.wxml$/i.test(request.document.uri) || expression.contexts || expression.objectLiteral || request.cancellation.isCancellationRequested) return undefined;
   const selected = reference(parse(expression.text), request.offset - expression.range.start + 1);
-  if (!selected || !ts.isIdentifier(selected.node) || expression.bindings.some((binding) => binding.name === selected.node.getText())) return undefined;
-  const key = JSON.stringify([reader.root(request.document.uri), request.document.uri, selected.node.text, options]);
+  const path = selected && accessPath(selected.node);
+  if (!selected || !path || !expression.event && expression.bindings.some((binding) => binding.name === path[0])) return undefined;
+  const key = JSON.stringify([reader.root(request.document.uri), request.document.uri, pathKey(path), options]);
   const cached = reader.revision && references.get(reader.revision)?.find((item) => item.key === key);
   let current: CachedReference;
   if (cached && await unchanged(reader, request, cached)) {
@@ -476,7 +550,7 @@ export async function directTemplateDefinition(reader: WorkspaceReader, request:
     for (const path of cached.paths) reader.navigation?.record(path);
   } else {
     const graph = new DirectReferences(reader, request, options, project);
-    const located = await locate(request, selected.node.text, graph);
+    const located = await locate(request, path, graph);
     const target = located && { uri: located.uri, range: located.range };
     const snapshot = graph.cache();
     const weight = [...snapshot.documents.values()].reduce((size, document) => size + (document?.text.length ?? 0), 0);
@@ -492,19 +566,23 @@ export async function directTemplateDefinition(reader: WorkspaceReader, request:
   if (!current.target) return undefined;
   const version = current.documents.get(current.target.uri)?.version;
   reader.navigation?.record({ code: 'symbol', message: '明确声明沿必要引用链定位，无需展开无关导入。', uri: current.target.uri });
-  return [{ ...current.target, originRange: { start: expression.range.start + selected.token.getStart() - 1, end: expression.range.start + selected.token.end - 1 }, ...(version !== undefined ? { version } : {}) }];
+  const quote = Number(ts.isStringLiteralLike(selected.token));
+  return [{ ...current.target, originRange: { start: expression.range.start + selected.token.getStart() - 1 + quote, end: expression.range.start + selected.token.end - 1 - quote }, ...(version !== undefined ? { version } : {}) }];
 }
 
 /** 字面量字段的类型和原注释可直接确认，不为简单详情启动完整类型图。 */
 export async function directCompletionDetails(reader: WorkspaceReader, request: LanguageRequest, expression: TemplateExpression, name: string, options: ScriptOptions): Promise<{ detail: string; documentation: string } | undefined> {
   if (!reader.revision || options.adapters?.length) return undefined;
   const site = completionSite(request, expression);
-  if (!site || !ts.isIdentifier(site.node)) return undefined;
-  const current = { ...request, document: { ...request.document, text: name }, offset: name.length };
-  const selected = { ...expression, text: name, range: { start: 0, end: name.length } };
+  const parent = site && ts.isPropertyAccessExpression(site.node) ? accessPath(site.node.expression) : site && ts.isIdentifier(site.node) ? [] : undefined;
+  if (!parent) return undefined;
+  const path = [...parent, name];
+  const text = path[0]! + path.slice(1).map((part) => '[' + JSON.stringify(part) + ']').join('');
+  const current = { ...request, document: { ...request.document, text }, offset: text.length - (path.length > 1 ? 2 : 0) };
+  const selected = { ...expression, text, range: { start: 0, end: text.length } };
   const definitions = await directTemplateDefinition(reader, current, selected, options);
   if (!definitions?.length || request.cancellation.isCancellationRequested) return undefined;
-  const key = JSON.stringify([reader.root(request.document.uri), request.document.uri, name, options]);
+  const key = JSON.stringify([reader.root(request.document.uri), request.document.uri, pathKey(path), options]);
   const cached = references.get(reader.revision)?.find((item) => item.key === key);
   return cached?.literalType === undefined ? undefined : { detail: cached.literalType, documentation: cached.description ?? '' };
 }

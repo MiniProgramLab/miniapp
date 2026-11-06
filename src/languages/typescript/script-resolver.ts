@@ -34,7 +34,7 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
   };
   /** 导航和悬浮共用声明链；同一请求的多个模板调用点共享页面 Program。 */
   async function definitions(request: LanguageRequest, expression: TemplateExpression, hover = false, rename = false, includeSignature = false): Promise<readonly ScriptDefinition[]> {
-    const wxs = await queryWxs(reader, request, expression, options(request.document.uri), rename);
+    const wxs = await queryWxs(reader, request, expression, options(request.document.uri), rename, hover ? 'hover' : 'definition');
     if (wxs) return wxs.definitions;
     const projects = new Map<string, ScriptProject>();
     if (!hover && !rename && !includeSignature && !options(request.document.uri).adapters?.length) {
@@ -129,7 +129,7 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
     symbols: (request, expression) => definitions(request, expression, false, true),
     /** 模块成员优先处理，普通字段沿真实调用上下文合并候选。 */
     async complete(request, expression) {
-      const wxs = await queryWxs(reader, request, expression, options(request.document.uri));
+      const wxs = await queryWxs(reader, request, expression, options(request.document.uri), false, 'completion');
       if (wxs) return wxs.completions;
       const result = new Map<string, Completion>();
       const contexts = expression.contexts ?? [{ uri: request.document.uri, scopes: undefined }];
@@ -145,7 +145,7 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
         return { detail: [...new Set(selected.map((entry) => entry.detail))].join(' | '), documentation: [...new Set(selected.map((entry) => entry.documentation).filter(Boolean))].join('\n') };
       } }));
       const site = request.deferCompletionDetails && completionSite(request, expression);
-      if (site && ts.isIdentifier(site.node)) {
+      if (site && (ts.isIdentifier(site.node) || ts.isPropertyAccessExpression(site.node))) {
         const names = await directTemplateNames(reader, request, expression, options(request.document.uri));
         if (names) {
           const candidates: Completion[] = names.filter((name) => name.startsWith(site.prefix) && /^[$\p{ID_Start}_][$\p{ID_Continue}]*$/u.test(name)).map((name) => ({ label: name, kind: 'value', detail: '模板字段', documentation: '', insertText: name, range: site.range }));
@@ -175,7 +175,7 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
     },
     /** 显式类型与原声明注释共同展示，多个调用页面的结果按文本去重。 */
     async hover(request, expression) {
-      const wxs = await queryWxs(reader, request, expression, options(request.document.uri));
+      const wxs = await queryWxs(reader, request, expression, options(request.document.uri), false, 'hover');
       if (wxs) return wxs.hover;
       if (!options(request.document.uri).adapters?.length) {
         const direct = await directTemplateHover(reader, request, expression, options(request.document.uri));

@@ -56,21 +56,28 @@ const pluginOptions = {
   footer: { js: 'module.exports = module.exports.default;' },
 };
 
+/** 语义线程独立交付，编译器与主扩展使用同一固定版本。 */
+const workerOptions = { ...options, entryPoints: ['src/compute-worker.ts'], outfile: 'dist/compute-worker.cjs', minify: true };
+
 if (process.argv.includes('--watch')) {
   const diagrams = watchArchitecture();
   const compiler = await context(options);
   const pluginCompiler = await context(pluginOptions);
+  const workerCompiler = await context(workerOptions);
   await compiler.watch();
   await pluginCompiler.watch();
+  await workerCompiler.watch();
   // 开发进程退出时一并释放图表监听及编译器。
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, async () => {
     await diagrams.close();
     await compiler.dispose();
     await pluginCompiler.dispose();
+    await workerCompiler.dispose();
     process.exit(0);
   });
 } else {
   await generateArchitecture();
   await build(options);
   await build(pluginOptions);
+  await build(workerOptions);
 }

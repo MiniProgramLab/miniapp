@@ -51,7 +51,7 @@ test('组件标签和结束标签跳到注册实现，并显示组件注释', as
   }
 });
 
-test('直接注册的组件标签跳转不加载业务导入或模板，悬浮仍读取完整语义', async () => {
+test('直接注册的组件标签跳转不加载业务导入，悬浮只读取说明和插槽', async () => {
   const context = fixture('<my-ca|rd/>', { ...component,
     'src/components/card/index.ts': `import {title} from './heavy';/** 展示卡片 */ Component({properties:{title:{type:String,value:title}}});`,
     'src/components/card/heavy.ts': `export const title='默认标题';`,
@@ -60,7 +60,7 @@ test('直接注册的组件标签跳转不加载业务导入或模板，悬浮�
   assert.ok(!context.reads.includes('file:///workspace/src/components/card/heavy.ts'));
   assert.ok(!context.reads.includes('file:///workspace/src/components/card/index.wxml'));
   assert.match((await context.hover())!.description, /展示卡片/);
-  assert.ok(context.reads.includes('file:///workspace/src/components/card/heavy.ts'));
+  assert.ok(!context.reads.includes('file:///workspace/src/components/card/heavy.ts'));
   assert.match((await context.hover())!.description, /插槽/);
 });
 

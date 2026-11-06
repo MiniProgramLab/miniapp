@@ -26,6 +26,7 @@
       "exports": [
         "WorkspaceCheckFilters",
         "applyRefactorEdit",
+        "createDependencyTracking",
         "createLanguageHost",
         "createWorkspaceReader",
         "formatCheckReport",
@@ -65,10 +66,37 @@
       "resources": []
     },
     {
+      "name": "adapters/worker",
+      "files": [
+        "src/adapters/worker/file-cache.ts",
+        "src/adapters/worker/message-batch.ts",
+        "src/adapters/worker/transport.ts"
+      ],
+      "exports": [
+        "ComputeHost",
+        "ComputeTransport",
+        "Computed",
+        "WorkerFileSnapshot",
+        "createMessageBatch",
+        "createWorkerFileCache"
+      ],
+      "ports": [
+        "Cancellation",
+        "LanguageRequest",
+        "LanguageResult",
+        "Logger",
+        "WorkspaceDependency",
+        "WorkspaceReader"
+      ],
+      "features": [],
+      "resources": []
+    },
+    {
       "name": "api",
       "files": [
         "src/api/checks.ts",
         "src/api/components.ts",
+        "src/api/compute.ts",
         "src/api/files.ts",
         "src/api/index.ts",
         "src/api/navigation.ts",
@@ -90,6 +118,7 @@
         "Completion",
         "ComponentEvent",
         "ComponentExtractionScope",
+        "ComponentInspection",
         "ComponentLocation",
         "ComponentMember",
         "ComponentProperty",
@@ -131,12 +160,14 @@
         "ResourceScope",
         "RouteAccess",
         "RouteContextResolver",
+        "RouteDocumentResolver",
         "RouteManifest",
         "RouteResolver",
         "RouteResult",
         "ScriptAdapter",
         "ScriptDefinitionResolver",
         "ScriptModule",
+        "ScriptSettings",
         "SemanticType",
         "StaticString",
         "StyleClassResolver",
@@ -179,6 +210,82 @@
         "TextRange",
         "WorkspaceDependency",
         "WorkspaceText"
+      ],
+      "features": [],
+      "resources": []
+    },
+    {
+      "name": "compute-protocol",
+      "files": [
+        "src/compute-protocol.ts"
+      ],
+      "exports": [
+        "ComputeChange",
+        "ComputePrepare",
+        "ComputeRead",
+        "ComputeReadReply",
+        "ComputeReady",
+        "ComputeReply",
+        "ComputeRequest",
+        "ComputeSettings"
+      ],
+      "ports": [
+        "DocumentSnapshot",
+        "NavigationStep",
+        "ScriptSettings",
+        "WorkspaceDependency"
+      ],
+      "features": [],
+      "resources": []
+    },
+    {
+      "name": "compute-services",
+      "files": [
+        "src/compute-services.ts"
+      ],
+      "exports": [
+        "createComputeServices"
+      ],
+      "ports": [
+        "Cancellation",
+        "LanguageFeatures",
+        "LanguagePlugin",
+        "LanguageRequest",
+        "ProjectFileResolver",
+        "WorkspaceDependency",
+        "WorkspaceReader"
+      ],
+      "features": [
+        "autoInsertion",
+        "codeActions",
+        "completion",
+        "definition",
+        "diagnostics",
+        "documentSymbols",
+        "foldingRanges",
+        "highlights",
+        "hover",
+        "linkedEditing",
+        "references",
+        "rename",
+        "selectionRanges",
+        "signatureHelp"
+      ],
+      "resources": []
+    },
+    {
+      "name": "compute-worker",
+      "files": [
+        "src/compute-worker.ts"
+      ],
+      "exports": [],
+      "ports": [
+        "Cancellation",
+        "LanguageRequest",
+        "NavigationStep",
+        "ScriptSettings",
+        "WorkspaceDependency",
+        "WorkspaceReader"
       ],
       "features": [],
       "resources": []
@@ -294,6 +401,7 @@
     {
       "name": "languages/typescript",
       "files": [
+        "src/languages/typescript/ambient-index.ts",
         "src/languages/typescript/analysis.ts",
         "src/languages/typescript/completion.ts",
         "src/languages/typescript/components.ts",
@@ -327,7 +435,8 @@
         "createDataPathPlugin",
         "createScriptNavigationPlugin",
         "createScriptResolver",
-        "createWxsPlugin"
+        "createWxsPlugin",
+        "prepareScriptCompiler"
       ],
       "ports": [
         "CallSignature",
@@ -336,6 +445,7 @@
         "Completion",
         "ComponentEvent",
         "ComponentExtractionScope",
+        "ComponentInspection",
         "ComponentLocation",
         "ComponentMember",
         "ComponentProperty",
@@ -392,6 +502,7 @@
         "src/languages/wxml/checks.ts",
         "src/languages/wxml/class-completion.ts",
         "src/languages/wxml/class-context.ts",
+        "src/languages/wxml/component-cache.ts",
         "src/languages/wxml/component-data.ts",
         "src/languages/wxml/component-events.ts",
         "src/languages/wxml/component-styles.ts",
@@ -434,10 +545,12 @@
         "wxmlPlugin"
       ],
       "ports": [
+        "Cancellation",
         "CodeAction",
         "Completion",
         "ComponentEvent",
         "ComponentExtractionScope",
+        "ComponentInspection",
         "ComponentLocation",
         "ComponentMember",
         "ComponentProperty",
@@ -510,6 +623,7 @@
         "src/resolution/project.ts",
         "src/resolution/registration-edits.ts",
         "src/resolution/route-file-edits.ts",
+        "src/resolution/route-syntax.ts",
         "src/resolution/routes-document.ts",
         "src/resolution/routes.ts"
       ],
@@ -520,6 +634,7 @@
         "createFileNavigationPlugin",
         "createFileOperations",
         "createProjectFileResolver",
+        "createRouteDocumentResolver",
         "createRoutePlugin",
         "createRouteResolver",
         "routeFileEdits"
@@ -536,6 +651,7 @@
         "ProjectFileResolver",
         "RouteAccess",
         "RouteContextResolver",
+        "RouteDocumentResolver",
         "RouteManifest",
         "RouteResolver",
         "RouteResult",
@@ -597,6 +713,91 @@
       "typeOnly": true
     },
     {
+      "from": "adapters/worker",
+      "to": "api",
+      "typeOnly": true
+    },
+    {
+      "from": "adapters/worker",
+      "to": "compute-protocol",
+      "typeOnly": true
+    },
+    {
+      "from": "adapters/worker",
+      "to": "npm:node:worker_threads",
+      "typeOnly": false
+    },
+    {
+      "from": "compute-protocol",
+      "to": "api",
+      "typeOnly": true
+    },
+    {
+      "from": "compute-services",
+      "to": "adapters/worker",
+      "typeOnly": false
+    },
+    {
+      "from": "compute-services",
+      "to": "api",
+      "typeOnly": true
+    },
+    {
+      "from": "compute-services",
+      "to": "languages/typescript",
+      "typeOnly": false
+    },
+    {
+      "from": "compute-services",
+      "to": "resolution",
+      "typeOnly": false
+    },
+    {
+      "from": "compute-worker",
+      "to": "adapters/vscode",
+      "typeOnly": false
+    },
+    {
+      "from": "compute-worker",
+      "to": "adapters/worker",
+      "typeOnly": false
+    },
+    {
+      "from": "compute-worker",
+      "to": "api",
+      "typeOnly": true
+    },
+    {
+      "from": "compute-worker",
+      "to": "compute-protocol",
+      "typeOnly": true
+    },
+    {
+      "from": "compute-worker",
+      "to": "core",
+      "typeOnly": false
+    },
+    {
+      "from": "compute-worker",
+      "to": "languages/typescript",
+      "typeOnly": false
+    },
+    {
+      "from": "compute-worker",
+      "to": "npm:node:async_hooks",
+      "typeOnly": false
+    },
+    {
+      "from": "compute-worker",
+      "to": "npm:node:worker_threads",
+      "typeOnly": false
+    },
+    {
+      "from": "compute-worker",
+      "to": "resolution",
+      "typeOnly": false
+    },
+    {
       "from": "core",
       "to": "api",
       "typeOnly": true
@@ -610,6 +811,11 @@
       "from": "extension",
       "to": "api",
       "typeOnly": true
+    },
+    {
+      "from": "extension",
+      "to": "compute-services",
+      "typeOnly": false
     },
     {
       "from": "extension",

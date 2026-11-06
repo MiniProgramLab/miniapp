@@ -5,7 +5,7 @@
     "title": "miniapp 插件分层架构",
     "subtitle": "miniprogramlab.miniapp · 箭头表示源码依赖方向 · 实线：运行时 · 虚线：仅类型",
     "viewBox": [
-      1504,
+      1648,
       1596
     ]
   },
@@ -15,7 +15,7 @@
       "type": "cloud",
       "label": "组合入口",
       "pos": [
-        178,
+        250,
         116
       ],
       "size": [
@@ -30,11 +30,11 @@
       "type": "frontend",
       "label": "adapters/typescript",
       "pos": [
-        178,
+        250,
         326
       ],
       "size": [
-        556,
+        358.6666666666667,
         100
       ],
       "sublabel": "0 个公开导出",
@@ -45,37 +45,52 @@
       "type": "frontend",
       "label": "VS Code / Cursor 适配器",
       "pos": [
-        770,
+        644.6666666666667,
         326
       ],
       "size": [
-        556,
+        358.6666666666667,
         100
       ],
-      "sublabel": "10 个公开导出",
+      "sublabel": "11 个公开导出",
       "tag": "src/adapters/vscode"
     },
     {
       "id": "module3",
+      "type": "frontend",
+      "label": "adapters/worker",
+      "pos": [
+        1039.3333333333335,
+        326
+      ],
+      "size": [
+        358.6666666666667,
+        100
+      ],
+      "sublabel": "6 个公开导出",
+      "tag": "src/adapters/worker"
+    },
+    {
+      "id": "module4",
       "type": "cloud",
       "label": "公共 API 与能力契约",
       "pos": [
-        178,
+        250,
         536
       ],
       "size": [
         556,
         100
       ],
-      "sublabel": "72 个公开导出",
+      "sublabel": "75 个公开导出",
       "tag": "src/api"
     },
     {
-      "id": "module4",
+      "id": "module5",
       "type": "cloud",
       "label": "插件底座",
       "pos": [
-        770,
+        842,
         536
       ],
       "size": [
@@ -86,11 +101,11 @@
       "tag": "src/core"
     },
     {
-      "id": "module5",
+      "id": "module6",
       "type": "backend",
       "label": "CSS / WXSS / SCSS / Less",
       "pos": [
-        178,
+        250,
         746
       ],
       "size": [
@@ -101,11 +116,11 @@
       "tag": "src/languages/css"
     },
     {
-      "id": "module6",
+      "id": "module7",
       "type": "backend",
       "label": "TypeScript / JavaScript",
       "pos": [
-        572.6666666666667,
+        644.6666666666667,
         746
       ],
       "size": [
@@ -116,11 +131,11 @@
       "tag": "src/languages/typescript"
     },
     {
-      "id": "module7",
+      "id": "module8",
       "type": "backend",
       "label": "WXML",
       "pos": [
-        967.3333333333334,
+        1039.3333333333335,
         746
       ],
       "size": [
@@ -131,26 +146,71 @@
       "tag": "src/languages/wxml"
     },
     {
-      "id": "module8",
+      "id": "module9",
       "type": "backend",
-      "label": "智能文件解析",
+      "label": "compute-protocol",
       "pos": [
-        178,
+        250,
         956
       ],
       "size": [
-        1148,
+        260,
+        100
+      ],
+      "sublabel": "8 个公开导出",
+      "tag": "src/compute-protocol"
+    },
+    {
+      "id": "module10",
+      "type": "backend",
+      "label": "compute-services",
+      "pos": [
+        546,
+        956
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "sublabel": "14 项编辑能力",
+      "tag": "src/compute-services"
+    },
+    {
+      "id": "module11",
+      "type": "backend",
+      "label": "compute-worker",
+      "pos": [
+        842,
+        956
+      ],
+      "size": [
+        260,
+        100
+      ],
+      "sublabel": "0 个公开导出",
+      "tag": "src/compute-worker"
+    },
+    {
+      "id": "module12",
+      "type": "backend",
+      "label": "智能文件解析",
+      "pos": [
+        1138,
+        956
+      ],
+      "size": [
+        260,
         100
       ],
       "sublabel": "14 项编辑能力",
       "tag": "src/resolution"
     },
     {
-      "id": "module9",
+      "id": "module13",
       "type": "external",
       "label": "node:async_hooks",
       "pos": [
-        178,
+        250,
         1166
       ],
       "size": [
@@ -161,11 +221,11 @@
       "tag": "node:async_hooks"
     },
     {
-      "id": "module10",
+      "id": "module14",
       "type": "external",
       "label": "node:path",
       "pos": [
-        572.6666666666667,
+        644.6666666666667,
         1166
       ],
       "size": [
@@ -176,12 +236,27 @@
       "tag": "node:path"
     },
     {
-      "id": "module11",
+      "id": "module15",
+      "type": "external",
+      "label": "node:worker_threads",
+      "pos": [
+        1039.3333333333335,
+        1166
+      ],
+      "size": [
+        358.6666666666667,
+        100
+      ],
+      "sublabel": "外部运行时 / 类型依赖",
+      "tag": "node:worker_threads"
+    },
+    {
+      "id": "module16",
       "type": "external",
       "label": "typescript",
       "pos": [
-        967.3333333333334,
-        1166
+        447.3333333333333,
+        1376
       ],
       "size": [
         358.6666666666667,
@@ -191,11 +266,11 @@
       "tag": "typescript"
     },
     {
-      "id": "module12",
+      "id": "module17",
       "type": "external",
       "label": "vscode",
       "pos": [
-        572.6666666666666,
+        842,
         1376
       ],
       "size": [
@@ -220,7 +295,8 @@
       "label": "编辑器适配层",
       "wraps": [
         "module1",
-        "module2"
+        "module2",
+        "module3"
       ],
       "pad": 30
     },
@@ -228,8 +304,8 @@
       "kind": "region",
       "label": "公共契约与插件底座",
       "wraps": [
-        "module3",
-        "module4"
+        "module4",
+        "module5"
       ],
       "pad": 30
     },
@@ -237,9 +313,9 @@
       "kind": "region",
       "label": "语言能力层",
       "wraps": [
-        "module5",
         "module6",
-        "module7"
+        "module7",
+        "module8"
       ],
       "pad": 30
     },
@@ -247,7 +323,10 @@
       "kind": "region",
       "label": "共享解析与工程服务",
       "wraps": [
-        "module8"
+        "module9",
+        "module10",
+        "module11",
+        "module12"
       ],
       "pad": 30
     },
@@ -255,10 +334,11 @@
       "kind": "region",
       "label": "编辑器宿主与基础依赖",
       "wraps": [
-        "module9",
-        "module10",
-        "module11",
-        "module12"
+        "module13",
+        "module14",
+        "module15",
+        "module16",
+        "module17"
       ],
       "pad": 30
     }
@@ -266,141 +346,524 @@
   "connections": [
     {
       "from": "module1",
-      "to": "module11",
+      "to": "module16",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "top",
       "via": [
         [
-          456,
+          429.33333333333337,
           461
         ],
         [
-          1474,
+          1618,
           461
         ],
         [
-          1474,
-          1131
+          1618,
+          1341
         ],
         [
-          1146.6666666666667,
-          1131
-        ]
-      ]
-    },
-    {
-      "from": "module2",
-      "to": "module3",
-      "variant": "dashed",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "via": [
-        [
-          1048,
-          481
-        ],
-        [
-          456,
-          481
+          626.6666666666666,
+          1341
         ]
       ]
     },
     {
       "from": "module2",
       "to": "module4",
-      "variant": "default",
+      "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "top",
       "via": [
         [
-          1048,
+          824.0000000000001,
           481
         ],
         [
-          1048,
+          528,
           481
         ]
       ]
     },
     {
       "from": "module2",
-      "to": "module9",
+      "to": "module5",
       "variant": "default",
       "fromSide": "bottom",
       "toSide": "top",
       "via": [
         [
-          1048,
+          824.0000000000001,
+          481
+        ],
+        [
+          1120,
+          481
+        ]
+      ]
+    },
+    {
+      "from": "module2",
+      "to": "module13",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          824.0000000000001,
           476
         ],
         [
-          1462,
+          1606,
           476
         ],
         [
-          1462,
+          1606,
           1116
         ],
         [
-          357.33333333333337,
+          429.33333333333337,
           1116
+        ]
+      ]
+    },
+    {
+      "from": "module2",
+      "to": "module17",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          824.0000000000001,
+          481
+        ],
+        [
+          1602,
+          481
+        ],
+        [
+          1602,
+          1321
+        ],
+        [
+          1021.3333333333334,
+          1321
         ]
       ]
     },
     {
       "from": "module2",
       "to": "module12",
-      "variant": "default",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "via": [
-        [
-          1048,
-          481
-        ],
-        [
-          1458,
-          481
-        ],
-        [
-          1458,
-          1321
-        ],
-        [
-          752,
-          1321
-        ]
-      ]
-    },
-    {
-      "from": "module2",
-      "to": "module8",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "top",
       "via": [
         [
-          1048,
+          824.0000000000001,
           486
         ],
         [
-          1454,
+          1598,
           486
         ],
         [
-          1454,
+          1598,
           896
         ],
         [
-          752,
+          1268,
           896
         ]
       ]
     },
     {
-      "from": "module4",
+      "from": "module3",
+      "to": "module4",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1218.6666666666667,
+          481
+        ],
+        [
+          528,
+          481
+        ]
+      ]
+    },
+    {
+      "from": "module3",
+      "to": "module9",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1218.6666666666667,
+          496
+        ],
+        [
+          1590,
+          496
+        ],
+        [
+          1590,
+          886
+        ],
+        [
+          380,
+          886
+        ]
+      ]
+    },
+    {
+      "from": "module3",
+      "to": "module15",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1218.6666666666667,
+          461
+        ],
+        [
+          1586,
+          461
+        ],
+        [
+          1586,
+          1131
+        ],
+        [
+          1218.6666666666667,
+          1131
+        ]
+      ]
+    },
+    {
+      "from": "module9",
+      "to": "module4",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          380,
+          1096
+        ],
+        [
+          1582,
+          1096
+        ],
+        [
+          1582,
+          676
+        ],
+        [
+          528,
+          676
+        ]
+      ]
+    },
+    {
+      "from": "module10",
       "to": "module3",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          676,
+          1101
+        ],
+        [
+          70,
+          1101
+        ],
+        [
+          70,
+          471
+        ],
+        [
+          1218.6666666666667,
+          471
+        ]
+      ]
+    },
+    {
+      "from": "module10",
+      "to": "module4",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          676,
+          1106
+        ],
+        [
+          1574,
+          1106
+        ],
+        [
+          1574,
+          686
+        ],
+        [
+          528,
+          686
+        ]
+      ]
+    },
+    {
+      "from": "module10",
+      "to": "module7",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          676,
+          1111
+        ],
+        [
+          78,
+          1111
+        ],
+        [
+          78,
+          901
+        ],
+        [
+          824.0000000000001,
+          901
+        ]
+      ]
+    },
+    {
+      "from": "module10",
+      "to": "module12",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          676,
+          1116
+        ],
+        [
+          82,
+          1116
+        ],
+        [
+          82,
+          1116
+        ],
+        [
+          1268,
+          1116
+        ]
+      ]
+    },
+    {
+      "from": "module11",
+      "to": "module2",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          972,
+          1121
+        ],
+        [
+          86,
+          1121
+        ],
+        [
+          86,
+          491
+        ],
+        [
+          824.0000000000001,
+          491
+        ]
+      ]
+    },
+    {
+      "from": "module11",
+      "to": "module3",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          972,
+          1126
+        ],
+        [
+          90,
+          1126
+        ],
+        [
+          90,
+          496
+        ],
+        [
+          1218.6666666666667,
+          496
+        ]
+      ]
+    },
+    {
+      "from": "module11",
+      "to": "module4",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          972,
+          1091
+        ],
+        [
+          1554,
+          1091
+        ],
+        [
+          1554,
+          671
+        ],
+        [
+          528,
+          671
+        ]
+      ]
+    },
+    {
+      "from": "module11",
+      "to": "module9",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          972,
+          1096
+        ],
+        [
+          1550,
+          1096
+        ],
+        [
+          1550,
+          1096
+        ],
+        [
+          380,
+          1096
+        ]
+      ]
+    },
+    {
+      "from": "module11",
+      "to": "module5",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          972,
+          1101
+        ],
+        [
+          102,
+          1101
+        ],
+        [
+          102,
+          681
+        ],
+        [
+          1120,
+          681
+        ]
+      ]
+    },
+    {
+      "from": "module11",
+      "to": "module7",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          972,
+          1106
+        ],
+        [
+          106,
+          1106
+        ],
+        [
+          106,
+          896
+        ],
+        [
+          824.0000000000001,
+          896
+        ]
+      ]
+    },
+    {
+      "from": "module11",
+      "to": "module13",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          972,
+          1111
+        ],
+        [
+          429.33333333333337,
+          1111
+        ]
+      ]
+    },
+    {
+      "from": "module11",
+      "to": "module15",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          972,
+          1111
+        ],
+        [
+          1218.6666666666667,
+          1111
+        ]
+      ]
+    },
+    {
+      "from": "module11",
+      "to": "module12",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "from": "module5",
+      "to": "module4",
       "variant": "dashed",
       "fromSide": "left",
       "toSide": "right"
@@ -413,62 +876,62 @@
       "toSide": "top",
       "via": [
         [
-          752,
+          824,
           271
         ],
         [
-          1048,
+          824.0000000000001,
           271
-        ]
-      ]
-    },
-    {
-      "from": "module0",
-      "to": "module3",
-      "variant": "dashed",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "via": [
-        [
-          752,
-          251
-        ],
-        [
-          1442,
-          251
-        ],
-        [
-          1442,
-          501
-        ],
-        [
-          456,
-          501
         ]
       ]
     },
     {
       "from": "module0",
       "to": "module4",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          824,
+          256
+        ],
+        [
+          1518,
+          256
+        ],
+        [
+          1518,
+          496
+        ],
+        [
+          528,
+          496
+        ]
+      ]
+    },
+    {
+      "from": "module0",
+      "to": "module10",
       "variant": "default",
       "fromSide": "bottom",
       "toSide": "top",
       "via": [
         [
-          752,
-          256
+          824,
+          261
         ],
         [
-          66,
-          256
+          134,
+          261
         ],
         [
-          66,
-          496
+          134,
+          911
         ],
         [
-          1048,
-          496
+          676,
+          911
         ]
       ]
     },
@@ -480,20 +943,20 @@
       "toSide": "top",
       "via": [
         [
-          752,
-          261
+          824,
+          266
         ],
         [
-          70,
-          261
+          138,
+          266
         ],
         [
-          70,
-          701
+          138,
+          486
         ],
         [
-          357.33333333333337,
-          701
+          1120,
+          486
         ]
       ]
     },
@@ -505,20 +968,20 @@
       "toSide": "top",
       "via": [
         [
-          752,
-          266
+          824,
+          271
         ],
         [
-          74,
-          266
+          142,
+          271
         ],
         [
-          74,
-          696
+          142,
+          691
         ],
         [
-          752.0000000000001,
-          696
+          429.33333333333337,
+          691
         ]
       ]
     },
@@ -530,45 +993,20 @@
       "toSide": "top",
       "via": [
         [
-          752,
-          271
-        ],
-        [
-          78,
-          271
-        ],
-        [
-          78,
-          691
-        ],
-        [
-          1146.6666666666667,
-          691
-        ]
-      ]
-    },
-    {
-      "from": "module0",
-      "to": "module12",
-      "variant": "default",
-      "fromSide": "bottom",
-      "toSide": "top",
-      "via": [
-        [
-          752,
+          824,
           276
         ],
         [
-          1422,
+          146,
           276
         ],
         [
-          1422,
-          1316
+          146,
+          686
         ],
         [
-          752,
-          1316
+          824.0000000000001,
+          686
         ]
       ]
     },
@@ -580,179 +1018,237 @@
       "toSide": "top",
       "via": [
         [
-          752,
+          824,
           281
         ],
         [
-          86,
+          150,
           281
         ],
         [
-          86,
-          891
+          150,
+          681
         ],
         [
-          752,
-          891
+          1218.6666666666667,
+          681
         ]
       ]
     },
     {
-      "from": "module5",
-      "to": "module3",
-      "variant": "dashed",
-      "fromSide": "bottom",
-      "toSide": "bottom",
-      "via": [
-        [
-          357.33333333333337,
-          916
-        ],
-        [
-          1414,
-          916
-        ],
-        [
-          1414,
-          706
-        ],
-        [
-          456,
-          706
-        ]
-      ]
-    },
-    {
-      "from": "module6",
-      "to": "module3",
-      "variant": "dashed",
-      "fromSide": "bottom",
-      "toSide": "bottom",
-      "via": [
-        [
-          752.0000000000001,
-          881
-        ],
-        [
-          1410,
-          881
-        ],
-        [
-          1410,
-          671
-        ],
-        [
-          456,
-          671
-        ]
-      ]
-    },
-    {
-      "from": "module6",
-      "to": "module11",
+      "from": "module0",
+      "to": "module17",
       "variant": "default",
       "fromSide": "bottom",
       "toSide": "top",
       "via": [
         [
-          752.0000000000001,
+          824,
+          286
+        ],
+        [
+          1494,
+          286
+        ],
+        [
+          1494,
+          1306
+        ],
+        [
+          1021.3333333333334,
+          1306
+        ]
+      ]
+    },
+    {
+      "from": "module0",
+      "to": "module12",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          824,
+          251
+        ],
+        [
+          158,
+          251
+        ],
+        [
+          158,
+          921
+        ],
+        [
+          1268,
+          921
+        ]
+      ]
+    },
+    {
+      "from": "module6",
+      "to": "module4",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          429.33333333333337,
           886
         ],
         [
-          1406,
+          1486,
           886
         ],
         [
-          1406,
-          1126
+          1486,
+          676
         ],
         [
-          1146.6666666666667,
-          1126
+          528,
+          676
         ]
       ]
     },
     {
       "from": "module7",
-      "to": "module3",
+      "to": "module4",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "bottom",
       "via": [
         [
-          1146.6666666666667,
+          824.0000000000001,
           891
         ],
         [
-          1402,
+          1482,
           891
         ],
         [
-          1402,
+          1482,
           681
         ],
         [
-          456,
+          528,
           681
         ]
       ]
     },
     {
+      "from": "module7",
+      "to": "module16",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          824.0000000000001,
+          896
+        ],
+        [
+          1478,
+          896
+        ],
+        [
+          1478,
+          1326
+        ],
+        [
+          626.6666666666666,
+          1326
+        ]
+      ]
+    },
+    {
       "from": "module8",
-      "to": "module3",
+      "to": "module4",
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "bottom",
       "via": [
         [
-          752,
-          1106
+          1218.6666666666667,
+          901
         ],
         [
-          1398,
-          1106
+          1474,
+          901
         ],
         [
-          1398,
-          686
+          1474,
+          691
         ],
         [
-          456,
-          686
+          528,
+          691
         ]
       ]
     },
     {
-      "from": "module8",
-      "to": "module10",
+      "from": "module12",
+      "to": "module4",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          1268,
+          1116
+        ],
+        [
+          1470,
+          1116
+        ],
+        [
+          1470,
+          696
+        ],
+        [
+          528,
+          696
+        ]
+      ]
+    },
+    {
+      "from": "module12",
+      "to": "module14",
       "variant": "default",
       "fromSide": "bottom",
       "toSide": "top",
       "via": [
         [
-          752,
+          1268,
           1111
         ],
         [
-          752.0000000000001,
+          824.0000000000001,
           1111
         ]
       ]
     },
     {
-      "from": "module8",
-      "to": "module11",
+      "from": "module12",
+      "to": "module16",
       "variant": "default",
       "fromSide": "bottom",
       "toSide": "top",
       "via": [
         [
-          752,
-          1111
+          1268,
+          1126
         ],
         [
-          1146.6666666666667,
-          1111
+          1462,
+          1126
+        ],
+        [
+          1462,
+          1306
+        ],
+        [
+          626.6666666666666,
+          1306
         ]
       ]
     }
@@ -771,17 +1267,54 @@
       "title": "VS Code / Cursor 适配器 · 8 个源文件",
       "items": [
         "目录：src/adapters/vscode",
-        "公开导出：WorkspaceCheckFilters、applyRefactorEdit、createLanguageHost、createWorkspaceReader、formatCheckReport、formatNavigationReport、registerFileOperations、registerNavigationExplanation、registerWorkspaceCheck、toWorkspaceEdit",
+        "公开导出：WorkspaceCheckFilters、applyRefactorEdit、createDependencyTracking、createLanguageHost、createWorkspaceReader、formatCheckReport、formatNavigationReport、registerFileOperations、registerNavigationExplanation、registerWorkspaceCheck、toWorkspaceEdit",
         "依赖契约：CheckFile、CheckFinding、CheckProvider、CheckReport、CheckResult、CodeAction、Completion、Definition、Diagnostic、Disposable、LanguageFeatures、LanguageHost、LanguageRequest、LanguageResult、Logger、NavigationReport、NavigationStep、NavigationTracking、OutlineSymbol、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText"
       ]
     },
     {
       "dot": "cyan",
-      "title": "公共 API 与能力契约 · 8 个源文件",
+      "title": "adapters/worker · 3 个源文件",
+      "items": [
+        "目录：src/adapters/worker",
+        "公开导出：ComputeHost、ComputeTransport、Computed、WorkerFileSnapshot、createMessageBatch、createWorkerFileCache",
+        "依赖契约：Cancellation、LanguageRequest、LanguageResult、Logger、WorkspaceDependency、WorkspaceReader"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "公共 API 与能力契约 · 9 个源文件",
       "items": [
         "目录：src/api",
-        "公开导出：CallSignature、Cancellation、CheckFile、CheckFinding、CheckIssue、CheckOptions、CheckProvider、CheckReport、CheckResult、CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentLocation、ComponentMember、ComponentProperty、ComponentResolver、ComponentScriptInfo、ComponentScriptResolver、ComponentUsages、DatasetAccess、Definition、Diagnostic、Disposable、DocumentSnapshot、EventForwarding、ExpressionInfo、FileReference、FileReferenceKind、FoldingRegion、HandlerSignature、Hover、InstanceAccess、LanguageFeatures、LanguageHost、LanguagePlugin、LanguageRequest、LanguageResult、LinkedEditing、Logger、MiniAppApi、NavigationReport、NavigationStep、NavigationTracking、OutlineSymbol、PageQuery、PluginContext、PluginInfo、ProjectFileResolver、Reference、RenameTarget、ResourceScope、RouteAccess、RouteContextResolver、RouteManifest、RouteResolver、RouteResult、ScriptAdapter、ScriptDefinitionResolver、ScriptModule、SemanticType、StaticString、StyleClassResolver、TemplateBinding、TemplateContext、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
+        "公开导出：CallSignature、Cancellation、CheckFile、CheckFinding、CheckIssue、CheckOptions、CheckProvider、CheckReport、CheckResult、CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentInspection、ComponentLocation、ComponentMember、ComponentProperty、ComponentResolver、ComponentScriptInfo、ComponentScriptResolver、ComponentUsages、DatasetAccess、Definition、Diagnostic、Disposable、DocumentSnapshot、EventForwarding、ExpressionInfo、FileReference、FileReferenceKind、FoldingRegion、HandlerSignature、Hover、InstanceAccess、LanguageFeatures、LanguageHost、LanguagePlugin、LanguageRequest、LanguageResult、LinkedEditing、Logger、MiniAppApi、NavigationReport、NavigationStep、NavigationTracking、OutlineSymbol、PageQuery、PluginContext、PluginInfo、ProjectFileResolver、Reference、RenameTarget、ResourceScope、RouteAccess、RouteContextResolver、RouteDocumentResolver、RouteManifest、RouteResolver、RouteResult、ScriptAdapter、ScriptDefinitionResolver、ScriptModule、ScriptSettings、SemanticType、StaticString、StyleClassResolver、TemplateBinding、TemplateContext、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
         "依赖契约：CallSignature、Cancellation、CodeAction、Completion、DatasetAccess、Definition、Diagnostic、ExpressionInfo、FoldingRegion、HandlerSignature、Hover、InstanceAccess、LanguageRequest、LanguageResult、OutlineSymbol、ProjectFileResolver、Reference、RenameTarget、RouteAccess、RouteManifest、ScriptDefinitionResolver、ScriptModule、SemanticType、StaticString、TextEdit、TextRange、WorkspaceDependency、WorkspaceText"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "compute-protocol · 1 个源文件",
+      "items": [
+        "目录：src/compute-protocol",
+        "公开导出：ComputeChange、ComputePrepare、ComputeRead、ComputeReadReply、ComputeReady、ComputeReply、ComputeRequest、ComputeSettings",
+        "依赖契约：DocumentSnapshot、NavigationStep、ScriptSettings、WorkspaceDependency"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "compute-services · 1 个源文件",
+      "items": [
+        "目录：src/compute-services",
+        "公开导出：createComputeServices",
+        "声明能力：自动闭合、codeActions、补全、定义跳转、diagnostics、documentSymbols、foldingRanges、highlights、悬浮、标签联动、references、rename、selectionRanges、signatureHelp",
+        "依赖契约：Cancellation、LanguageFeatures、LanguagePlugin、LanguageRequest、ProjectFileResolver、WorkspaceDependency、WorkspaceReader"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "compute-worker · 1 个源文件",
+      "items": [
+        "目录：src/compute-worker",
+        "公开导出：无入口导出",
+        "依赖契约：Cancellation、LanguageRequest、NavigationStep、ScriptSettings、WorkspaceDependency、WorkspaceReader"
       ]
     },
     {
@@ -817,24 +1350,24 @@
     },
     {
       "dot": "emerald",
-      "title": "TypeScript / JavaScript · 27 个源文件",
+      "title": "TypeScript / JavaScript · 28 个源文件",
       "items": [
         "目录：src/languages/typescript",
-        "公开导出：createComponentScriptResolver、createDataPathPlugin、createScriptNavigationPlugin、createScriptResolver、createWxsPlugin",
+        "公开导出：createComponentScriptResolver、createDataPathPlugin、createScriptNavigationPlugin、createScriptResolver、createWxsPlugin、prepareScriptCompiler",
         "声明能力：补全、定义跳转、diagnostics、highlights、悬浮、references、rename、signatureHelp",
-        "依赖契约：CallSignature、Cancellation、CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentLocation、ComponentMember、ComponentProperty、ComponentScriptInfo、ComponentScriptResolver、DatasetAccess、Definition、Diagnostic、EventForwarding、ExpressionInfo、HandlerSignature、Hover、InstanceAccess、LanguageFeatures、LanguagePlugin、LanguageRequest、NavigationStep、PageQuery、ProjectFileResolver、RouteAccess、RouteManifest、ScriptAdapter、ScriptDefinitionResolver、ScriptModule、SemanticType、StaticString、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
+        "依赖契约：CallSignature、Cancellation、CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentInspection、ComponentLocation、ComponentMember、ComponentProperty、ComponentScriptInfo、ComponentScriptResolver、DatasetAccess、Definition、Diagnostic、EventForwarding、ExpressionInfo、HandlerSignature、Hover、InstanceAccess、LanguageFeatures、LanguagePlugin、LanguageRequest、NavigationStep、PageQuery、ProjectFileResolver、RouteAccess、RouteManifest、ScriptAdapter、ScriptDefinitionResolver、ScriptModule、SemanticType、StaticString、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
         "语言资源：grammars: wxs",
         "语言资源：languages: wxs"
       ]
     },
     {
       "dot": "emerald",
-      "title": "WXML · 30 个源文件",
+      "title": "WXML · 31 个源文件",
       "items": [
         "目录：src/languages/wxml",
         "公开导出：WxmlOptions、createComponentResolver、createDatasetFeatures、createInstanceFeatures、createNavigatorPlugin、createRenameFeatures、createRouteContextResolver、createTemplateResolver、createWxmlPlugin、navigatorAccesses、templateFileReferences、wxmlPlugin",
         "声明能力：自动闭合、codeActions、补全、定义跳转、diagnostics、documentSymbols、foldingRanges、highlights、悬浮、标签联动、references、rename、selectionRanges、signatureHelp",
-        "依赖契约：CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentLocation、ComponentMember、ComponentProperty、ComponentResolver、ComponentScriptInfo、ComponentScriptResolver、ComponentUsages、DatasetAccess、Definition、Diagnostic、FileReference、FoldingRegion、Hover、InstanceAccess、LanguageFeatures、LanguagePlugin、LanguageRequest、LinkedEditing、OutlineSymbol、ProjectFileResolver、RenameTarget、RouteAccess、RouteContextResolver、RouteResolver、ScriptDefinitionResolver、ScriptModule、SemanticType、StyleClassResolver、TemplateBinding、TemplateContext、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
+        "依赖契约：Cancellation、CodeAction、Completion、ComponentEvent、ComponentExtractionScope、ComponentInspection、ComponentLocation、ComponentMember、ComponentProperty、ComponentResolver、ComponentScriptInfo、ComponentScriptResolver、ComponentUsages、DatasetAccess、Definition、Diagnostic、FileReference、FoldingRegion、Hover、InstanceAccess、LanguageFeatures、LanguagePlugin、LanguageRequest、LinkedEditing、OutlineSymbol、ProjectFileResolver、RenameTarget、RouteAccess、RouteContextResolver、RouteResolver、ScriptDefinitionResolver、ScriptModule、SemanticType、StyleClassResolver、TemplateBinding、TemplateContext、TemplateExpression、TemplateScope、TextEdit、TextRange、WorkspaceDependency、WorkspaceReader、WorkspaceText",
         "语言资源：grammars: wxml",
         "语言资源：languages: wxml",
         "语言资源：snippets: wxml"
@@ -842,12 +1375,12 @@
     },
     {
       "dot": "cyan",
-      "title": "智能文件解析 · 11 个源文件",
+      "title": "智能文件解析 · 12 个源文件",
       "items": [
         "目录：src/resolution",
-        "公开导出：FileMove、FileReferences、RelatedFile、createFileNavigationPlugin、createFileOperations、createProjectFileResolver、createRoutePlugin、createRouteResolver、routeFileEdits",
+        "公开导出：FileMove、FileReferences、RelatedFile、createFileNavigationPlugin、createFileOperations、createProjectFileResolver、createRouteDocumentResolver、createRoutePlugin、createRouteResolver、routeFileEdits",
         "声明能力：自动闭合、codeActions、补全、定义跳转、diagnostics、documentSymbols、foldingRanges、highlights、悬浮、标签联动、references、rename、selectionRanges、signatureHelp",
-        "依赖契约：Cancellation、Completion、Definition、FileReference、FileReferenceKind、LanguageFeatures、LanguagePlugin、LanguageRequest、ProjectFileResolver、RouteAccess、RouteContextResolver、RouteManifest、RouteResolver、RouteResult、ScriptDefinitionResolver、StaticString、TextEdit、TextRange、WorkspaceReader、WorkspaceText"
+        "依赖契约：Cancellation、Completion、Definition、FileReference、FileReferenceKind、LanguageFeatures、LanguagePlugin、LanguageRequest、ProjectFileResolver、RouteAccess、RouteContextResolver、RouteDocumentResolver、RouteManifest、RouteResolver、RouteResult、ScriptDefinitionResolver、StaticString、TextEdit、TextRange、WorkspaceReader、WorkspaceText"
       ]
     }
   ]

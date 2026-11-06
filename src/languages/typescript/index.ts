@@ -1,6 +1,9 @@
 import type { ComponentScriptResolver, LanguageFeatures, LanguagePlugin, LanguageRequest, ScriptDefinitionResolver, WorkspaceReader } from '../../api';
 import type { ScriptOptions } from './project';
 
+/** 可见模板打开后仅准备固定编译器，工程图仍由首次查询按需构建。 */
+export async function prepareScriptCompiler(): Promise<void> { await import('typescript'); }
+
 /** 注册时仅建立轻量端口，首次有效脚本查询才加载编译器与语义模块。 */
 export function createScriptResolver(reader: WorkspaceReader, options: (uri: string) => ScriptOptions = () => ({})): ScriptDefinitionResolver {
   /** 编译器按需加载，完整 Program 通过宿主修订标识进行有界复用。 */
@@ -74,10 +77,10 @@ export function createScriptResolver(reader: WorkspaceReader, options: (uri: str
 /** WXS 文件使用内置 JS 语义，保持与 WXML 内联模块相同的行为。 */
 export function createWxsPlugin(reader: WorkspaceReader, options: (uri: string) => ScriptOptions = () => ({}), rename?: LanguageFeatures['rename'], references?: LanguageFeatures['references']): LanguagePlugin {
   /** 按需查询，扩展激活不会提前加载编译器。 */
-  async function query(request: LanguageRequest) {
+  async function query(request: LanguageRequest, mode: 'definition' | 'hover' | 'completion') {
     if (request.cancellation.isCancellationRequested) return undefined;
     const module = await import('./wxs');
-    return module.queryWxs(reader, request, undefined, options(request.document.uri));
+    return module.queryWxs(reader, request, undefined, options(request.document.uri), false, mode);
   }
   return { id: 'miniprogramlab.wxs', displayName: 'WXS 脚本语义', languages: ['wxs'],
     /** 文件补全、导航和注释共享现有 CommonJS 静态解析。 */
@@ -88,9 +91,9 @@ export function createWxsPlugin(reader: WorkspaceReader, options: (uri: string) 
         /** 编译器按需加载，WXS 光标移动只运行文件内查询。 */
         provide: async (request) => (await import('./navigation')).provideScriptHighlights(reader, request, options(request.document.uri)),
       },
-      definition: { provide: async (request) => (await query(request))?.definitions ?? [] },
-      hover: { provide: async (request) => (await query(request))?.hover },
-      completion: { triggerCharacters: ['.'], provide: async (request) => (await query(request))?.completions ?? [] },
+      definition: { provide: async (request) => (await query(request, 'definition'))?.definitions ?? [] },
+      hover: { provide: async (request) => (await query(request, 'hover'))?.hover },
+      completion: { triggerCharacters: ['.'], provide: async (request) => (await query(request, 'completion'))?.completions ?? [] },
       signatureHelp: { triggerCharacters: ['(', ','], provide: async (request) => (await import('./wxs-calls')).signatureWxs(reader, request, undefined, options(request.document.uri)) },
       diagnostics: { dependencyLanguages: ['wxs'], provide: async (request) => (await import('./wxs-checks')).diagnoseWxs(reader, request, undefined, options(request.document.uri)) },
     }; },
@@ -114,10 +117,10 @@ export function createComponentScriptResolver(reader: WorkspaceReader, options: 
       return request.cancellation.isCancellationRequested ? [] : resolver.locate!(request, uri);
     },
     /** 已取消的组件查询不初始化编译器或读取后续文件。 */
-    async inspect(request, uri, includeInstance) {
+    async inspect(request, uri, includeInstance, inspection) {
       if (request.cancellation.isCancellationRequested) return undefined;
       const resolver = await load();
-      return request.cancellation.isCancellationRequested ? undefined : resolver.inspect(request, uri, includeInstance);
+      return request.cancellation.isCancellationRequested ? undefined : resolver.inspect(request, uri, includeInstance, inspection);
     },
   };
 }

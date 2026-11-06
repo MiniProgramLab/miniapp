@@ -1,4 +1,5 @@
 import type { CheckFile, CheckFinding, CheckIssue, CheckOptions, CheckProvider, CheckResult, Diagnostic, TextRange, WorkspaceReader } from '../api';
+import { createCheckpoint } from './cooperative';
 
 /** 一次建立行起点，所有诊断复用同一份 UTF-16 位置索引。 */
 function positions(text: string) {
@@ -15,6 +16,7 @@ function positions(text: string) {
 
 /** 有界逐文件检查共享诊断端口，部分结果必须保留明确的完成状态。 */
 export async function checkWorkspace(reader: WorkspaceReader, supplied: readonly CheckFile[], providers: readonly CheckProvider[], options: CheckOptions): Promise<CheckResult> {
+  const checkpoint = createCheckpoint(4);
   const maxFiles = Number.isFinite(options.maxFiles) ? Math.max(1, Math.min(100000, Math.floor(options.maxFiles!))) : 10000;
   const maxFindings = Number.isFinite(options.maxFindings) ? Math.max(1, Math.min(100000, Math.floor(options.maxFindings!))) : 50000;
   const files = [...new Map(supplied.map((file) => [file.uri, file])).values()];
@@ -32,7 +34,7 @@ export async function checkWorkspace(reader: WorkspaceReader, supplied: readonly
   let checked = 0, skipped = 0, full = false;
   if (files.length > maxFiles) addIssue({ message: `文件数量超过检查上限 ${maxFiles}，未执行全部检查。` });
   for (const file of files.slice(0, maxFiles)) {
-    if (options.cancellation.isCancellationRequested || full) break;
+    if (!await checkpoint(options.cancellation) || full) break;
     const matching = providers.filter((provider) => provider.active() && provider.languages.includes(file.languageId));
     if (!matching.length) { skipped++; continue; }
     const own = reader.revision?.(file.uri);
@@ -45,7 +47,7 @@ export async function checkWorkspace(reader: WorkspaceReader, supplied: readonly
     const captured = new Map<string, string>();
     if (own !== undefined) captured.set(file.uri, own);
     let stable = true;
-    const request = { document: { uri: file.uri, text: snapshot.text, languageId: file.languageId, version: snapshot.version ?? 0 }, offset: 0, cancellation: options.cancellation };
+    const request = { document: { uri: file.uri, text: snapshot.text, languageId: file.languageId, version: snapshot.version ?? 0 }, offset: 0, cancellation: options.cancellation, checkpoint };
     for (const provider of matching) {
       if (options.cancellation.isCancellationRequested) break;
       if (!provider.active()) { addIssue({ uri: file.uri, provider: provider.name, message: '检查器已卸载，未完成此项检查。' }); continue; }
